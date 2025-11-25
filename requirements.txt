@@ -1,0 +1,15 @@
+# Core libraries
+selenium
+requests
+openai
+openai-whisper
+
+# For audio processing
+pydub
+SpeechRecognition
+
+# For environment variables
+python-dotenv
+
+# For automatic browser driver management
+webdriver-manager

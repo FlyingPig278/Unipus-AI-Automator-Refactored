@@ -1,0 +1,17 @@
+# Environments
+.env
+.venv
+venv/
+__pycache__/
+*.pyc
+
+# IDEs
+.idea/
+.vscode/
+
+# Cache
+.cache/
+
+# Manually downloaded WebDriver
+msedgedriver.exe
+
