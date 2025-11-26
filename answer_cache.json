@@ -1,0 +1,36 @@
+{
+  "大学英语听说教程（第二版）1": {
+    "Love makes a family": {
+      "2-5 Listen to communicate": {
+        "Act-out": {
+          "Try it out": {
+            "type": "single_choice",
+            "questions": {
+              "800f44ea857e4087": {
+                "answer": "C"
+              },
+              "7f93ed0e26ee7623": {
+                "answer": "D"
+              },
+              "d2f52e30f0aaaf40": {
+                "answer": "B"
+              },
+              "167558ca739245e3": {
+                "answer": "F"
+              },
+              "bbb20250301dfc05": {
+                "answer": "G"
+              },
+              "3376be080c1aaca8": {
+                "answer": "E"
+              },
+              "0e05380e0d98f8f4": {
+                "answer": "A"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
