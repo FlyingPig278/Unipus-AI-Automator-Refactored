@@ -45,6 +45,14 @@ TASK_ITEM_TYPE_NAME = '[class*="courses-unit_taskTypeName"]'   # 任务项的类
 # Question Page
 BREADCRUMB_TEXT_ELEMENTS = ".pc-break-crumb .pc-break-crumb-text"
 AUDIO_SOURCE_ELEMENT = "audio"
+VIDEO_SOURCE_ELEMENT = "video"
+MEDIA_SOURCE_ELEMENTS = "audio, video" # 组合选择器，用于同时查找音频和视频
+
+# HTTP Headers for requests
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36 Edge/108.0.1462.54'
+}
+
 IKNOW_BUTTON = ".iKnow"  # 通用的“我知道了”按钮
 SYSTEM_OK_BUTTON = ".system-info-cloud-ok-button" # antd风格弹窗的“OK”按钮
 SUBMIT_CONFIRMATION_BUTTON = ".system-info-cloud-ok-button" # 提交确认弹窗的“确定”按钮，是上面SYSTEM_OK_BUTTON的一个别名

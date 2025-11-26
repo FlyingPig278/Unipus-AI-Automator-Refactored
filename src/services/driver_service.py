@@ -153,18 +153,20 @@ class DriverService:
             print("错误：点击课程后，未能等到课程单元加载。页面可能已更改。")
             raise
 
-    def get_audio_source_url(self) -> str | None:
+    def get_media_source_and_type(self) -> tuple[str | None, str | None]:
         """
-        尝试在当前页面查找<audio>元素并返回其源URL。
-        这是一个非阻塞方法，如果找不到元素则返回None。
+        尝试在当前页面查找<audio>或<video>元素，并返回其源URL和标签类型。
+        这是一个非阻塞方法，如果找不到元素则返回(None, None)。
         """
         try:
-            audio_element = self.short_wait.until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, config.AUDIO_SOURCE_ELEMENT))
+            media_element = self.short_wait.until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, config.MEDIA_SOURCE_ELEMENTS))
             )
-            return audio_element.get_attribute('src')
+            url = media_element.get_attribute('src')
+            tag_name = media_element.tag_name # "audio" or "video"
+            return url, tag_name
         except TimeoutException:
-            return None
+            return None, None
 
     def get_element_text(self, by: str, value: str, wait_condition=EC.presence_of_element_located) -> str:
         """

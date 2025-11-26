@@ -28,32 +28,35 @@ class AIService:
         self.deepseek_client = OpenAI(api_key=config.DEEPSEEK_API_KEY, base_url=config.DEEPSEEK_BASE_URL)
         print("DeepSeek客户端配置完毕。")
 
-    def transcribe_audio_from_url(self, url: str) -> str:
+    def transcribe_media_from_url(self, url: str) -> str:
         """
-        从URL下载音频，转录为文字，然后删除临时文件。
+        从URL下载媒体文件（音频或视频），转录为文字，然后删除临时文件。
         """
         temp_file_path = None
         try:
-            print(f"正在从URL下载音频: {url}")
-            response = requests.get(url, stream=True)
+            print(f"正在从URL下载媒体文件: {url}")
+            # 添加headers和timeout参数，模拟浏览器请求，增加健壮性
+            response = requests.get(url, stream=True, headers=config.HEADERS, timeout=30) # 增加下载超时时间
             response.raise_for_status() # 如果下载失败则抛出异常
 
             # 创建一个带正确扩展名的临时文件
-            suffix = os.path.splitext(url)[1] or '.mp3' # 从URL推断或默认为.mp3
+            # 从URL中提取路径部分，避免查询参数的干扰
+            path_part = url.split('?')[0]
+            suffix = os.path.splitext(path_part)[1] or '.tmp'
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
                 temp_file_path = temp_file.name
                 for chunk in response.iter_content(chunk_size=8192):
                     temp_file.write(chunk)
             
-            print(f"音频已临时保存至: {temp_file_path}")
-            # 调用现有的方法进行转录
-            return self.transcribe_audio(temp_file_path)
+            print(f"媒体文件已临时保存至: {temp_file_path}")
+            # 调用转录方法
+            return self.transcribe_media_file(temp_file_path)
 
         except requests.RequestException as e:
-            print(f"下载音频时发生错误: {e}")
+            print(f"下载媒体文件时发生错误: {e}")
             return ""
         except Exception as e:
-            print(f"处理音频URL时发生未知错误: {e}")
+            print(f"处理媒体文件URL时发生未知错误: {e}")
             return ""
         finally:
             # 确保临时文件在操作结束后被删除
@@ -61,12 +64,13 @@ class AIService:
                 os.remove(temp_file_path)
                 print(f"已清理临时文件: {temp_file_path}")
 
-    def transcribe_audio(self, file_path: str) -> str:
+    def transcribe_media_file(self, file_path: str) -> str:
         """
-        使用Whisper模型将指定的音频文件转换为文字。
+        使用Whisper模型将指定的媒体文件（音频或视频）转换为文字。
+        Whisper会自动处理视频文件中的音轨。
 
         Args:
-            file_path (str): 音频文件的本地路径。
+            file_path (str): 媒体文件的本地路径。
 
         Returns:
             str: 识别出的文本内容。

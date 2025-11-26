@@ -120,21 +120,21 @@ class SingleChoiceStrategy(BaseStrategy):
        self._fill_and_submit(answers_to_fill, cache_write_needed, breadcrumb_parts)
 
    def _get_article_text(self) -> str:
-       """提取文章或听力原文。"""
-       audio_url = self.driver_service.get_audio_source_url()
-       if audio_url:
-           print(f"发现音频文件，准备转写: {audio_url}")
+       """提取文章或听力原文（音频或视频）。"""
+       media_url, media_type = self.driver_service.get_media_source_and_type()
+       if media_url:
+           print(f"发现 {media_type} 文件，准备转写: {media_url}")
            # 注意：此处假设ai_service有transcribe_audio_from_url方法
            # 您可能需要根据ai_service的实现来调整
            try:
-                article_text = self.ai_service.transcribe_audio_from_url(audio_url)
+                article_text = self.ai_service.transcribe_media_from_url(media_url)
                 if not article_text:
-                    print("警告：音频转写失败。")
+                    print("警告：媒体文件转写失败。")
                 return article_text
            except Exception as e:
-                print(f"音频转写时发生错误: {e}")
+                print(f"媒体文件转写时发生错误: {e}")
                 return ""
-       print("未在本页找到可用的音频文件。")
+       print("未在本页找到可用的音频或视频文件。")
        return ""
 
    def _get_direction_text(self) -> str:
