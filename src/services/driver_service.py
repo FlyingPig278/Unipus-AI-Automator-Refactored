@@ -40,40 +40,33 @@ class DriverService:
             await self.playwright.stop()
         print("浏览器已关闭。")
 
-    async def _click(self, selector: str):
-        """辅助方法：点击一个元素。"""
-        await self.page.click(selector)
-
-    async def _send_keys(self, selector: str, keys: str):
-        """辅助方法：向一个元素发送按键。"""
-        await self.page.fill(selector, keys)
-        
     async def login(self):
         """执行完整的登录流程，并导航到课程列表页面。"""
         print("正在导航到登录页面...")
         await self.page.goto(config.LOGIN_URL)
         
         print("正在勾选用户协议...")
-        await self._click(config.AGREEMENT_CHECKBOX)
+        await self.page.click(config.AGREEMENT_CHECKBOX)
 
         print("正在输入凭据...")
-        await self._send_keys(config.LOGIN_USERNAME_INPUT, config.USERNAME)
-        await self._send_keys(config.LOGIN_PASSWORD_INPUT, config.PASSWORD)
+        await self.page.fill(config.LOGIN_USERNAME_INPUT, config.USERNAME)
+        await self.page.fill(config.LOGIN_PASSWORD_INPUT, config.PASSWORD)
         
         print("正在点击登录按钮...")
-        await self._click(config.LOGIN_BUTTON)
+        await self.page.click(config.LOGIN_BUTTON)
         
         # 处理“知道了”弹窗，这个弹窗会拦截后续的点击
         try:
-            await self.page.click(config.GOT_IT_POPUP_BUTTON, timeout=3000) # Playwright的click方法会自动等待，timeout直接传给click
+            # 给可选的弹窗设置一个较短的超时时间
+            await self.page.click(config.GOT_IT_POPUP_BUTTON, timeout=3000)
             print("已点击“知道了”弹窗。")
         except PlaywrightTimeoutError:
             print("未找到“知道了”弹窗，跳过。")
 
-        # 这里我们不再依赖固定的弹窗，而是等待“我的课程”按钮出现
+        # 等待主页面加载并点击“我的课程”
         print("等待主页面加载...")
         try:
-            # Playwright会自动等待元素出现
+            # Playwright的click会自动等待元素出现并可被点击
             await self.page.click(config.MY_COURSES_BUTTON)
             print("已点击“我的课程”。")
         except PlaywrightTimeoutError:
@@ -138,10 +131,7 @@ class DriverService:
         except TimeoutException:
             return None, None
 
-    async def get_element_text(self, selector: str) -> str:
-        """辅助方法：获取一个元素的文本内容。"""
-        return await self.page.text_content(selector)
-    
+    def get_course_list(self) -> list[str]:
     def get_breadcrumb_parts(self) -> list[str]:
         """
         从页面提取完整路径信息：面包屑 -> 激活的Tab -> 激活的Task。
