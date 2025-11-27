@@ -39,7 +39,7 @@ class SingleChoiceStrategy(BaseStrategy):
        return question_wrap_element.text.strip()
 
    def execute(self) -> None:
-       """执行单选题的解题逻辑，优先从缓存中查找答案。"""
+       """执行单选题的解题逻辑，优先从缓存中查找答案（数组模式）。"""
        print("=" * 20)
        print("开始执行单选题策略...")
 
@@ -59,35 +59,22 @@ class SingleChoiceStrategy(BaseStrategy):
        # 1. 一次性获取整个页面的缓存
        task_page_cache = self.cache_service.get_task_page_cache(breadcrumb_parts)
 
-       all_questions_in_cache = False
+       use_cache = False
        if task_page_cache and task_page_cache.get('type') == self.strategy_type:
-           print("在缓存中找到此页面的记录，尝试匹配所有题目...")
-           cached_questions = task_page_cache.get('questions', {})
-           temp_answers = []
-           all_found = True
-           for question_wrap_element in original_question_wraps:
-               question_text_for_hash = self.driver_service._get_full_question_text_for_caching(question_wrap_element)
-               # 使用 cache_service 内部的哈希方法来生成键
-               question_hash = self.cache_service._generate_question_hash(question_text_for_hash)
-
-               if question_hash in cached_questions:
-                   answer_obj = cached_questions[question_hash]
-                   temp_answers.append(answer_obj['answer'])
-                   print(f"在缓存中找到答案: ... -> {answer_obj['answer']}")
-               else:
-                   all_found = False
-                   print(f"题目 '{question_text_for_hash[:30]}...' 在页面缓存中未找到。")
-                   break
-
-           if all_found:
-               all_questions_in_cache = True
-               answers_to_fill = temp_answers
+           print("在缓存中找到此页面的记录，正在校验...")
+           cached_answers = task_page_cache.get('answers', [])
+           # 校验缓存答案数量和页面题目数量是否一致
+           if len(cached_answers) == len(original_question_wraps):
+               use_cache = True
+               answers_to_fill = cached_answers
+           else:
+               print("缓存答案数量与当前页面题目数量不匹配，将调用AI。")
 
        # 2. 根据缓存情况决定下一步
-       if all_questions_in_cache:
+       if use_cache:
            print("所有题目均在缓存中找到答案，直接填写。")
        else:
-           print("部分或全部题目在缓存中未找到，将调用AI进行解答...")
+           print("缓存未命中或不完整，将调用AI进行解答...")
            cache_write_needed = True
 
            # --- AI后备逻辑 ---
@@ -198,47 +185,25 @@ class SingleChoiceStrategy(BaseStrategy):
 
    def _write_answers_to_cache(self, breadcrumb_parts: list[str]):
        """
-       导航到答案解析页面，提取正确答案，并作为一个整体写入缓存。
+       导航到答案解析页面，提取正确答案，并作为一个简单的列表写入缓存。
        """
        try:
-           original_page_url = self.driver_service.driver.current_url
            self.driver_service._navigate_to_answer_analysis_page()
            extracted_analysis_answers = self.driver_service.extract_all_correct_answers_from_analysis_page()
 
-           # 返回原页面以重新匹配题目和答案
-           self.driver_service.driver.get(original_page_url)
-           self.driver_service.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, config.QUESTION_WRAP)))
-           print("已返回原始题目页面，开始匹配并准备写入缓存...")
-
-           fresh_question_wraps = self.driver_service.driver.find_elements(By.CSS_SELECTOR, config.QUESTION_WRAP)
-
-           if len(fresh_question_wraps) != len(extracted_analysis_answers):
-               print(
-                   f"警告：写入缓存失败，原始页面题目数量({len(fresh_question_wraps)})与解析页面答案数量({len(extracted_analysis_answers)})不匹配。")
+           if not extracted_analysis_answers:
+               print("警告：未能从解析页面提取到任何答案，无法更新缓存。")
                return
 
-           # 准备要传递给缓存服务的数据列表
-           answers_data_to_cache = []
-           for i in range(len(fresh_question_wraps)):
-               full_question_text = self.driver_service._get_full_question_text_for_caching(fresh_question_wraps[i])
-               correct_answer = extracted_analysis_answers[i]['correct_answer']
+           # 直接提取答案字符串列表
+           correct_answers_list = [item['correct_answer'] for item in extracted_analysis_answers]
 
-               if not full_question_text:
-                   print(f"警告：无法为第 {i + 1} 题生成缓存键，跳过写入。")
-                   continue
-
-               answers_data_to_cache.append({
-                   'question_text': full_question_text,
-                   'correct_answer': correct_answer
-               })
-
-           # 一次性保存整个页面的答案
-           if answers_data_to_cache:
-               self.cache_service.save_task_page_answers(
-                   breadcrumb_parts,
-                   self.strategy_type,
-                   answers_data_to_cache
-               )
+           # 一次性保存整个页面的答案列表
+           self.cache_service.save_task_page_answers(
+               breadcrumb_parts,
+               self.strategy_type,
+               correct_answers_list
+           )
 
        except Exception as e:
            print(f"写入缓存过程中发生错误: {e}")

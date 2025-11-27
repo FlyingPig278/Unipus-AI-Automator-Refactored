@@ -1,12 +1,11 @@
 # src/services/cache_service.py
 import json
 import os
-import hashlib
 
 class CacheService:
     """
     缓存服务类，用于管理AI答案的本地缓存。
-    使用“精简后”的哈希值作为键，以优化存储和可读性。
+    最终版：放弃哈希，直接按顺序存储答案数组，便于人工编辑。
     """
     def __init__(self, cache_file_path: str = "answer_cache.json"):
         self.cache_file_path = cache_file_path
@@ -35,13 +34,6 @@ class CacheService:
         except IOError as e:
             print(f"错误：写入缓存文件 {self.cache_file_path} 时失败: {e}")
 
-    def _generate_question_hash(self, question_text: str) -> str:
-        """
-        为题目文本生成一个精简的SHA256哈希值（前16位）。
-        """
-        full_hash = hashlib.sha256(question_text.encode('utf-8')).hexdigest()
-        return full_hash[:16] # 截取前16位作为精简哈希
-
     def get_task_page_cache(self, breadcrumb_parts: list[str]) -> dict | None:
         """
         根据面包屑路径，获取整个任务页面的缓存数据。
@@ -53,35 +45,25 @@ class CacheService:
                 return None
         return current_level
 
-    def save_task_page_answers(self, breadcrumb_parts: list[str], strategy_type: str, answers_data: list[dict]):
+    def save_task_page_answers(self, breadcrumb_parts: list[str], strategy_type: str, answers_list: list[str]):
         """
-        将一个任务页面的所有答案作为一个整体存入缓存。
+        将一个任务页面的所有答案（一个字符串列表）作为一个整体存入缓存。
 
         Args:
             breadcrumb_parts (list[str]): 题目的面包屑路径。
             strategy_type (str): 该页面所有题目的类型。
-            answers_data (list[dict]): 一个字典列表，每个字典包含 'question_text' 和 'correct_answer'。
+            answers_list (list[str]): 包含所有答案字符串的列表。
         """
         current_level = self.cache
         for part in breadcrumb_parts:
             current_level = current_level.setdefault(part, {})
         
-        # 构建 questions 节点
-        questions_node = {}
-        for item in answers_data:
-            question_text = item['question_text']
-            correct_answer = item['correct_answer']
-            
-            # 使用精简哈希作为键
-            question_hash = self._generate_question_hash(question_text)
-            questions_node[question_hash] = {"answer": correct_answer}
-            
-        # 构建新的缓存结构
+        # 构建新的、基于数组的缓存结构
         current_level['type'] = strategy_type
-        current_level.setdefault('questions', {}).update(questions_node)
+        current_level['answers'] = answers_list
         
         self._save_cache()
-        print(f"页面答案已整体保存到缓存路径: {' -> '.join(breadcrumb_parts)}")
+        print(f"页面答案已按顺序整体保存到缓存路径: {' -> '.join(breadcrumb_parts)}")
 
     def clear_cache(self):
         """清除所有缓存。"""

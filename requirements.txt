@@ -1,5 +1,5 @@
 # Core libraries
-selenium
+playwright
 requests
 openai
 openai-whisper
@@ -10,6 +10,3 @@ SpeechRecognition
 
 # For environment variables
 python-dotenv
-
-# For automatic browser driver management
-webdriver-manager

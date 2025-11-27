@@ -183,18 +183,6 @@ class DriverService:
         element = self.wait.until(wait_condition((by, value)))
         return element.text
     
-    def _get_full_question_text_for_caching(self, question_wrap_element) -> str:
-        """
-        从一个题目区块元素中，精确提取题目标题和选项文本并拼接，用于生成缓存键。
-        """
-        try:
-            title_element = question_wrap_element.find_element(By.CSS_SELECTOR, config.ANALYSIS_QUESTION_TITLE)
-            option_element = question_wrap_element.find_element(By.CSS_SELECTOR, config.QUESTION_OPTION_WRAP)
-            return title_element.text.strip() + option_element.text.strip()
-        except NoSuchElementException:
-            print("警告：在题目区块中未找到题目标题或选项，无法生成完整的缓存键。")
-            return ""
-
     def get_breadcrumb_parts(self) -> list[str]:
         """
         从页面提取完整路径信息：面包屑 -> 激活的Tab -> 激活的Task。
