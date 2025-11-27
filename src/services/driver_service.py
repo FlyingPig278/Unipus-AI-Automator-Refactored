@@ -2,111 +2,81 @@
 import time
 import os
 from time import sleep
+from playwright.async_api import async_playwright, Playwright, Browser, Page, expect
+from typing import List, Tuple
 
-from selenium import webdriver
-from selenium.webdriver.edge.service import Service as EdgeService
-from webdriver_manager.microsoft import EdgeChromiumDriverManager
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.by import By
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
+# Playwright有自己的异常类，不再需要Selenium的
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError # Playwright的TimeoutError，用作PlaywrightTimeoutError
 
 import src.config as config  # 导入我们的配置
 
 class DriverService:
     """服务类，用于封装所有Selenium浏览器操作。"""
 
-    def __init__(self, headless=False):
+    def __init__(self):
+        """初始化DriverService，设置基本属性。"""
+        self.playwright: Playwright | None = None
+        self.browser: Browser | None = None
+        self.page: Page | None = None
+        print("Playwright驱动服务已初始化（尚未启动）。")
+
+    async def start(self, headless=False):
         """
-        初始化Edge浏览器和WebDriverWait。
-        采用“本地优先”策略加载驱动，提高在网络不佳环境下的启动速度和稳定性。
+        启动Playwright，并创建一个新的浏览器页面。
         """
-        print("正在初始化浏览器驱动...")
-        options = webdriver.EdgeOptions()
-        if headless:
-            options.add_argument("--headless")
-        # 抑制过多的日志输出
-        options.add_argument("--disable-logging")
-        options.add_argument("--log-level=3")
+        print("正在启动Playwright浏览器...")
+        self.playwright = await async_playwright().start()
+        self.browser = await self.playwright.chromium.launch(headless=headless)
+        self.page = await self.browser.new_page()
+        self.page.set_default_timeout(30000) # 设置30秒默认超时
+        print("Playwright浏览器和新页面已成功启动。")
+
+    async def stop(self):
+        """优雅地关闭浏览器和Playwright实例。"""
+        print("正在关闭浏览器...")
+        if self.browser:
+            await self.browser.close()
+        if self.playwright:
+            await self.playwright.stop()
+        print("浏览器已关闭。")
+
+    async def _click(self, selector: str):
+        """辅助方法：点击一个元素。"""
+        await self.page.click(selector)
+
+    async def _send_keys(self, selector: str, keys: str):
+        """辅助方法：向一个元素发送按键。"""
+        await self.page.fill(selector, keys)
         
-        service = None
-        # 步骤 1: 优先检查本地是否存在驱动文件
-        print(f"正在检查本地驱动路径: {config.MANUAL_DRIVER_PATH}")
-        if os.path.exists(config.MANUAL_DRIVER_PATH):
-            print("检测到本地驱动文件，将直接使用。")
-            service = EdgeService(executable_path=config.MANUAL_DRIVER_PATH, log_output=os.devnull)
-        else:
-            # 步骤 2: 如果本地没有，则尝试从网络下载
-            print("未找到本地驱动，尝试从网络自动下载...")
-            try:
-                service = EdgeService(EdgeChromiumDriverManager().install(), log_output=os.devnull)
-                print("驱动自动下载并配置成功。")
-            except Exception as e:
-                # 步骤 3: 如果网络下载也失败，则提示用户手动操作
-                print("\n--- 自动下载驱动失败 ---")
-                print(f"错误信息: {e}")
-                print("\n请按以下步骤手动配置:")
-                print("1. 查看您的Edge浏览器版本 (在地址栏输入: edge://settings/help)。")
-                print("2. 访问 https://developer.microsoft.com/en-us/microsoft-edge/tools/webdriver/ 下载对应的驱动版本。")
-                print(f"3. 将下载的 'msedgedriver.exe' 文件放置在项目根目录下的这个位置: {config.MANUAL_DRIVER_PATH}")
-                print("配置完成后，请重新运行本程序。")
-                raise  # 终止程序运行，因为没有可用的驱动
-
-        self.driver = webdriver.Edge(service=service, options=options)
-        self.wait = WebDriverWait(self.driver, 10)
-        self.short_wait = WebDriverWait(self.driver, 3)
-        print("浏览器驱动初始化完毕。")
-
-    def _click(self, by: str, value: str, wait_condition=EC.element_to_be_clickable):
-        """辅助方法：等待并点击一个元素。"""
-        element = self.wait.until(wait_condition((by, value)))
-        element.click()
-        return element
-
-    def _send_keys(self, by: str, value: str, keys: str):
-        """辅助方法：等待并向一个元素发送按键。"""
-        element = self.wait.until(EC.visibility_of_element_located((by, value)))
-        element.send_keys(keys)
-        return element
-        
-    def login(self):
+    async def login(self):
         """执行完整的登录流程，并导航到课程列表页面。"""
         print("正在导航到登录页面...")
-        self.driver.get(config.LOGIN_URL)
+        await self.page.goto(config.LOGIN_URL)
         
         print("正在勾选用户协议...")
-        self._click(By.CSS_SELECTOR, config.AGREEMENT_CHECKBOX)
+        await self._click(config.AGREEMENT_CHECKBOX)
 
         print("正在输入凭据...")
-        self._send_keys(By.CSS_SELECTOR, config.LOGIN_USERNAME_INPUT, config.USERNAME)
-        self._send_keys(By.CSS_SELECTOR, config.LOGIN_PASSWORD_INPUT, config.PASSWORD)
+        await self._send_keys(config.LOGIN_USERNAME_INPUT, config.USERNAME)
+        await self._send_keys(config.LOGIN_PASSWORD_INPUT, config.PASSWORD)
         
         print("正在点击登录按钮...")
-        self._click(By.CSS_SELECTOR, config.LOGIN_BUTTON)
+        await self._click(config.LOGIN_BUTTON)
         
         # 处理“知道了”弹窗，这个弹窗会拦截后续的点击
         try:
-            # 直接使用 short_wait 和 EC 来处理这个特殊弹窗，避免调用不兼容的辅助函数
-            got_it_button = self.short_wait.until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, config.GOT_IT_POPUP_BUTTON))
-            )
-            got_it_button.click()
+            await self.page.click(config.GOT_IT_POPUP_BUTTON, timeout=3000) # Playwright的click方法会自动等待，timeout直接传给click
             print("已点击“知道了”弹窗。")
-        except TimeoutException:
+        except PlaywrightTimeoutError:
             print("未找到“知道了”弹窗，跳过。")
 
         # 这里我们不再依赖固定的弹窗，而是等待“我的课程”按钮出现
         print("等待主页面加载...")
         try:
-            # 直接使用用户提供的精确选择器定位并点击“我的课程”
-            my_courses_button = self.wait.until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, config.MY_COURSES_BUTTON))
-            )
-            sleep(1)
-            # 使用JS点击，更稳定
-            self.driver.execute_script("arguments[0].click();", my_courses_button)
+            # Playwright会自动等待元素出现
+            await self.page.click(config.MY_COURSES_BUTTON)
             print("已点击“我的课程”。")
-        except TimeoutException:
+        except PlaywrightTimeoutError:
             print("错误：登录后未找到“我的课程”按钮，无法继续。请检查页面或选择器。")
             raise
             
@@ -168,20 +138,9 @@ class DriverService:
         except TimeoutException:
             return None, None
 
-    def get_element_text(self, by: str, value: str, wait_condition=EC.presence_of_element_located) -> str:
-        """
-        辅助方法：等待元素并获取其文本内容。
-
-        Args:
-            by (By): 定位器类型 (e.g., By.ID, By.CSS_SELECTOR)。
-            value (str): 定位器值。
-            wait_condition: 等待条件，默认为元素存在于DOM中。
-
-        Returns:
-            str: 元素的文本内容。
-        """
-        element = self.wait.until(wait_condition((by, value)))
-        return element.text
+    async def get_element_text(self, selector: str) -> str:
+        """辅助方法：获取一个元素的文本内容。"""
+        return await self.page.text_content(selector)
     
     def get_breadcrumb_parts(self) -> list[str]:
         """
