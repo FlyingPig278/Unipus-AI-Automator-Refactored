@@ -2,6 +2,9 @@
 import asyncio
 from playwright.async_api import async_playwright, Playwright, Browser, Page, Error as PlaywrightError
 from typing import List, Tuple
+
+from playwright.sync_api import expect
+
 import src.config as config
 
 class DriverService:
@@ -38,10 +41,10 @@ class DriverService:
         await self.page.goto(config.LOGIN_URL)
         
         print("正在勾选用户协议...")
-        await self.page.get_by_text("我已阅读并同意").click()
+        await self.page.get_by_role("checkbox", name="我已阅读并同意").check()
 
         print("正在输入凭据...")
-        await self.page.get_by_placeholder("请输入用户名").fill(config.USERNAME)
+        await self.page.get_by_placeholder("请输入手机号/邮箱/用户名").fill(config.USERNAME)
         await self.page.get_by_placeholder("请输入密码").fill(config.PASSWORD)
         
         print("正在点击登录按钮...")
@@ -67,8 +70,8 @@ class DriverService:
         """获取“我的课程”页面上的所有课程名称。"""
         print("正在获取课程列表...")
         try:
-            await self.page.locator(".course-name p").first.wait_for()
-            course_names = await self.page.locator(".course-name p").all_text_contents()
+            await self.page.locator(".course-name").first.wait_for() # 等待课程名称的父容器出现
+            course_names = await self.page.locator(".course-name").all_text_contents()
             return [name.strip() for name in course_names if name.strip()]
         except PlaywrightError:
             print("错误：未能找到课程列表。")
@@ -137,7 +140,7 @@ class DriverService:
             print(f"正在检查单元: {unit_name}")
             try:
                 unit_index = await unit_locator.get_attribute("data-index")
-                if "tabActive" not in (await unit_locator.get_attribute("class')):
+                if "tabActive" not in (await unit_locator.get_attribute("class")):
                     await unit_locator.scroll_into_view_if_needed()
                     await unit_locator.click()
                     await expect(self.page.locator(f'[data-index="{unit_index}"]')).to_have_class(config.ACTIVE_UNIT_AREA)
@@ -161,18 +164,45 @@ class DriverService:
         return pending_tasks
 
     async def navigate_to_task(self, course_url: str, unit_index: str, task_index: int):
-        """导航到指定单元和索引的任务页面。"""
+        """
+        导航到指定单元和索引的任务页面，并在导航后处理常见弹窗。
+        """
         print(f"正在导航到单元 {unit_index}，任务索引 {task_index}...")
+
+        # 1. 重新回到课程主页，确保页面状态一致
         await self.page.goto(course_url)
+
+        # 2. 定位并点击指定的单元
         try:
             unit_locator = self.page.locator(f'[data-index="{unit_index}"]')
             await unit_locator.scroll_into_view_if_needed()
             await unit_locator.click()
-            await expect(self.page.locator(f'[data-index="{unit_index}"]')).to_have_class(config.ACTIVE_UNIT_AREA)
-            
-            task_locator = self.page.locator(config.ACTIVE_UNIT_AREA).locator(config.TASK_ITEM_CONTAINER).nth(task_index)
-            await task_locator.click()
+            # 兼容性：确保等待到正确的单元变为激活状态
+            await self.page.locator(f'[data-index="{unit_index}"][class*="tabActive"]').wait_for()
+            print(f"已确认单元 {unit_index} 已激活。")
+
+        except PlaywrightError:
+            print(f"错误：在导航到单元 {unit_index} 时超时，可能未找到单元或页面结构已更改。")
+            raise
+        except Exception as e:
+            print(f"错误：在导航到单元 {unit_index} 时发生异常: {e}")
+            raise
+
+        # 3. 定位并点击指定的任务
+        try:
+            # 找到对应单元下的所有任务项
+            task_elements_locators = self.page.locator(f"{config.ACTIVE_UNIT_AREA} {config.TASK_ITEM_CONTAINER}")
+            # 点击第 task_index 个任务
+            await task_elements_locators.nth(task_index).click()
             print(f"已进入任务索引 {task_index} 的任务页面。")
+
+            # 等待题目加载标记，针对服务器不稳定，增加等待时间
+            try:
+                await self.page.wait_for_selector(config.QUESTION_LOADING_MARKER, timeout=20000)
+            except PlaywrightError:
+                print("警告: 任务页面加载后，未在20秒内找到题目加载标记。")
+
+            # 调用通用的弹窗处理器
             await self.handle_common_popups()
         except Exception as e:
             print(f"错误：在进入任务索引 {task_index} 时失败: {e}")
@@ -180,21 +210,18 @@ class DriverService:
     
     async def handle_common_popups(self):
         """处理进入任务后常见的“我知道了”等弹窗。"""
+        # Playwright的click方法会自动等待元素出现和可点击。设置短超时以避免长时间阻塞。
         try:
+            # 统一使用 get_by_role 定位“我知道了”按钮
             await self.page.get_by_role("button", name="我知道了").click(timeout=3000)
-            print("已关闭“任务信息”弹窗。")
-        except PlaywrightError:
-            pass
-        try:
-            await self.page.locator(config.IKNOW_BUTTON).click(timeout=3000)
-            print("已关闭“鼠标取词”提示。")
+            print("已关闭“我知道了”提示/系统信息弹窗。")
         except PlaywrightError:
             pass
             
     async def handle_submission_confirmation(self):
         """处理点击提交后的“最终确认”弹窗。"""
         try:
-            await self.page.locator(config.SUBMIT_CONFIRMATION_BUTTON).click(timeout=3000)
+            await self.page.get_by_role("button", name="我知道了").click(timeout=3000) # 假设确认按钮文本也是“我知道了”
             print("已点击“最终确认提交”弹窗。")
         except PlaywrightError:
             pass
