@@ -75,7 +75,7 @@ class DriverService:
             
         print("登录流程完毕。")
 
-    def get_course_list(self) -> list[str]:
+    async def get_course_list(self) -> list[str]:
         """
         获取“我的课程”页面上的所有课程名称。
 
@@ -84,16 +84,18 @@ class DriverService:
         """
         print("正在获取课程列表...")
         try:
-            self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, config.COURSE_CARD_CONTAINER)))
-            course_elements = self.driver.find_elements(By.CSS_SELECTOR, config.COURSE_NAME_IN_CARD)
-            course_names = [elem.text for elem in course_elements if elem.text]
+            # Playwright的locator会自动等待元素出现
+            course_names = await self.page.locator(config.COURSE_NAME_IN_CARD).all_text_contents()
+            # 过滤掉空的字符串
+            course_names = [name.strip() for name in course_names if name.strip()]
             print(f"成功获取到 {len(course_names)} 门课程。")
             return course_names
-        except TimeoutException:
+        except PlaywrightTimeoutError:
             print("错误：未能找到课程列表容器，请检查选择器或确保已在正确的页面。")
             return []
 
-    def select_course_by_index(self, index: int):
+
+    async def select_course_by_index(self, index: int):
         """
         根据索引点击指定的课程卡片。
 
@@ -101,19 +103,18 @@ class DriverService:
             index (int): 用户选择的课程索引（从0开始）。
         """
         try:
-            course_cards = self.driver.find_elements(By.CSS_SELECTOR, config.COURSE_CARD_CONTAINER)
-            if 0 <= index < len(course_cards):
-                print(f"正在进入第 {index + 1} 门课程...")
-                # 使用JS点击，以应对点击被拦截等疑难杂症
-                self.driver.execute_script("arguments[0].click();", course_cards[index])
-                # 等待课程页面加载完成
-                self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, config.UNIT_TABS)))
-                print("已成功进入课程页面。")
-            else:
-                print(f"错误：选择的课程索引 {index} 无效。")
-                raise IndexError("课程选择索引超出范围")
-        except TimeoutException:
+            # Playwright的locator可以直接通过nth()选择第N个元素
+            # click()方法会自动等待元素出现和可点击
+            await self.page.locator(config.COURSE_CARD_CONTAINER).nth(index).click()
+            print(f"正在进入第 {index + 1} 门课程...")
+            # Playwright的locator会自动等待元素出现
+            await self.page.locator(config.UNIT_TABS).wait_for()
+            print("已成功进入课程页面。")
+        except PlaywrightTimeoutError:
             print("错误：点击课程后，未能等到课程单元加载。页面可能已更改。")
+            raise
+        except Exception as e:
+            print(f"错误：选择课程时发生异常: {e}")
             raise
 
     def get_media_source_and_type(self) -> tuple[str | None, str | None]:
@@ -178,22 +179,23 @@ class DriverService:
             print(f"提取完整目录树时发生错误: {e}")
             return []
 
-    def get_pending_tasks(self) -> list:
+    async def get_pending_tasks(self) -> list:
         """
         获取当前课程页面中所有未完成的必修任务。
         融合了用户建议的改进版：
         1. 使用JS点击和获取文本，解决窄屏/滚动条导致元素不可见的问题。
-        2. 每次循环重新查找元素，防止 DOM 刷新导致的 StaleElementReferenceException。
+        2. 每次循环重新查找元素，防止 DOM 刷新导致的 Playwright Error。
         3. 检查单元是否已激活，避免不必要的点击。
         """
         print("正在获取待完成任务列表...")
         pending_tasks = []
-        current_course_url = self.driver.current_url
+        current_course_url = self.page.url
 
         try:
-            self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, config.UNIT_TABS)))
-            units_count = len(self.driver.find_elements(By.CSS_SELECTOR, config.UNIT_TABS))
-        except TimeoutException:
+            # Playwright会自动等待config.UNIT_TABS出现
+            await self.page.wait_for_selector(config.UNIT_TABS)
+            units_count = await self.page.locator(config.UNIT_TABS).count()
+        except PlaywrightTimeoutError:
             print("未能定位到课程单元列表，请确保当前页面是课程主页。")
             return []
         except Exception as e:
@@ -203,17 +205,14 @@ class DriverService:
         for i in range(units_count):
             unit_name = ""  # 在循环开始时初始化
             try:
-                # 【关键】每次循环重新获取最新的元素列表
-                current_units = self.driver.find_elements(By.CSS_SELECTOR, config.UNIT_TABS)
-                if i >= len(current_units):
-                    print(f"警告：单元列表在循环中发生变化，提前结束。")
-                    break
+                # 【关键】每次循环都重新获取最新的元素引用，以避免“陈旧元素”错误
+                unit_element_locator = self.page.locator(config.UNIT_TABS).nth(i)
                 
-                unit_element = current_units[i]
-                unit_index = unit_element.get_attribute("data-index")
-
-                # 【关键】使用 JS 获取文本
-                unit_name = self.driver.execute_script("return arguments[0].textContent;", unit_element).strip().split('\n')[0]
+                # Playwright的auto-waiting可以处理元素存在但未加载完全的情况
+                unit_index = await unit_element_locator.get_attribute("data-index")
+                
+                # 【关键】使用 Playwright 获取文本
+                unit_name = (await unit_element_locator.text_content()).strip().split('\n')[0]
 
                 if "Test" in unit_name:
                     print(f"检测到测试单元 '{unit_name}'，已跳过。")
@@ -222,40 +221,29 @@ class DriverService:
                 print(f"正在检查单元: {unit_name}")
 
                 # 检查单元是否已激活
-                is_already_active = "tabActive" in unit_element.get_attribute("class")
+                is_already_active = "tabActive" in (await unit_element_locator.get_attribute("class"))
 
                 if not is_already_active:
-                    # 【关键】使用 JS 强制点击
-                    self.driver.execute_script("arguments[0].click();", unit_element)
-                    # 使用精确等待代替固定 sleep
-                    self.wait.until(
-                        EC.text_to_be_present_in_element_attribute(
-                            (By.CSS_SELECTOR, f'[data-index="{unit_index}"]'), 'class', 'tabActive'
-                        )
-                    )
+                    # 【关键】使用 Playwright 的 scrollIntoViewIfNeeded 确保可见，然后 click
+                    # Playwright的click方法会自动等待可点击
+                    await unit_element_locator.scroll_into_view_if_needed()
+                    await unit_element_locator.click()
+                    
+                    # 精确等待被点击的单元高亮
+                    await self.page.locator(f'[data-index="{unit_index}"][class*="tabActive"]').wait_for()
                 else:
                     print(f"单元 '{unit_name}' 当前已激活，无需点击切换。")
 
-                # --- 抓取任务的逻辑 (采用更精确的等待策略) ---
+                # --- 抓取任务的逻辑 ---
                 try:
-                    # 1. 定义第一个任务项的选择器
-                    first_task_locator = (By.CSS_SELECTOR, f"{config.ACTIVE_UNIT_AREA} {config.TASK_ITEM_CONTAINER}")
+                    # Playwright的locator会自动等待元素出现
+                    task_elements = await self.page.locator(f"{config.ACTIVE_UNIT_AREA} {config.TASK_ITEM_CONTAINER}").all()
                     
-                    # 2. 等待第一个任务项的容器出现
-                    self.wait.until(EC.presence_of_element_located(first_task_locator))
-
-                    # 3. 【关键】等待第一个任务项的文本内容被完整渲染（以出现“必修”为标志）
-                    self.wait.until(EC.text_to_be_present_in_element(first_task_locator, "必修"))
-                    
-                    # 4. 现在可以安全地获取所有任务
-                    task_elements = self.driver.find_elements(By.CSS_SELECTOR, f"{config.ACTIVE_UNIT_AREA} {config.TASK_ITEM_CONTAINER}")
-                    
-                    # 5. 使用最终获取的 task_elements 列表进行处理
-                    for index, task_element in enumerate(task_elements):
-                        text_content = task_element.text
+                    for index, task_element_locator in enumerate(task_elements):
+                        text_content = await task_element_locator.text_content()
                         if "必修" in text_content and "已完成" not in text_content:
                             try:
-                                task_name = task_element.find_element(By.CSS_SELECTOR, config.TASK_ITEM_TYPE_NAME).text
+                                task_name = await task_element_locator.locator(config.TASK_ITEM_TYPE_NAME).text_content()
                                 pending_tasks.append({
                                     "unit_index": unit_index,
                                     "unit_name": unit_name,
@@ -263,44 +251,39 @@ class DriverService:
                                     "task_name": task_name,
                                     "course_url": current_course_url
                                 })
-                            except NoSuchElementException:
+                            except Exception: # Playwright没有NoSuchElementException，直接捕获通用异常
                                 print(f"警告: 单元 '{unit_name}' 的任务 {index} 未能找到任务名称。")
-                except TimeoutException:
-                    print(f"单元 '{unit_name}' 内容区域已加载，但未在规定时间内发现任何任务项或任务状态文本。")
+                except PlaywrightTimeoutError:
+                    print(f"单元 '{unit_name}' 内容区域已加载，但未在规定时间内发现任何任务项。")
                     continue
 
-            except StaleElementReferenceException:
-                print(f"警告: 处理单元 '{unit_name}' (索引 {i}) 时页面元素已刷新，跳过本轮...")
+            except PlaywrightTimeoutError:
+                print(f"警告: 处理单元 '{unit_name}' (索引 {i}) 时发生PlaywrightTimeoutError，跳过本轮...")
                 continue
-            except Exception as e:
+            except Exception as e: # 捕获其他Playwright可能抛出的错误，包括StaleElementReferenceException等
                 print(f"错误: 在处理单元 '{unit_name}' (索引 {i}) 时发生异常: {e}")
                 continue
 
         print(f"待完成任务列表获取完毕，共 {len(pending_tasks)} 个任务。")
         return pending_tasks
 
-    def _navigate_to_answer_analysis_page(self):
+    async def _navigate_to_answer_analysis_page(self):
         """
         从“答题小结”页面点击第一个题号，进入“答案解析”页面。
         """
         print("正在导航到答案解析页面...")
         try:
-            # 等待答题小结页面加载
-            self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, config.SUMMARY_QUESTION_NUMBER)))
+            # Playwright的locator会自动等待元素出现
+            await self.page.locator(config.SUMMARY_QUESTION_NUMBER).first.click()
             
-            # 点击第一个题号即可显示所有题的解析
-            first_question_number = self.driver.find_element(By.CSS_SELECTOR, config.SUMMARY_QUESTION_NUMBER)
-            self.driver.execute_script("arguments[0].click();", first_question_number)
-            
-            # 等待答案解析页面加载完成（例如等待第一个题目解析的出现）
-            self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, config.QUESTION_WRAP)))
+            # Playwright会自动等待元素出现
+            await self.page.locator(config.QUESTION_WRAP).wait_for()
             print("已进入答案解析页面。")
-        except TimeoutException:
+        except PlaywrightTimeoutError:
             print("错误：未能进入答案解析页面，可能未找到题号或页面结构已改变。")
         except Exception as e:
             print(f"导航到答案解析页面时发生错误: {e}")
-
-    def extract_all_correct_answers_from_analysis_page(self) -> list[dict]:
+    async def extract_all_correct_answers_from_analysis_page(self) -> list[dict]:
         """
         从当前“答案解析”页面提取所有题目的文本和正确答案。
         
@@ -312,15 +295,17 @@ class DriverService:
         extracted_answers = []
         try:
             # 获取所有题目解析的容器
-            question_analysis_wraps = self.driver.find_elements(By.CSS_SELECTOR, config.QUESTION_WRAP)
+            question_analysis_wraps = await self.page.locator(config.QUESTION_WRAP).all()
             
-            for wrap_element in question_analysis_wraps:
-                # 使用新的辅助方法精确提取题目标题和选项文本，用于缓存键
-                question_text_for_cache = self._get_full_question_text_for_caching(wrap_element)
+            for wrap_element_locator in question_analysis_wraps:
+                # Playwright的ElementHandle没有_get_full_question_text_for_caching方法，直接获取text_content
+                question_text_for_cache = await wrap_element_locator.text_content()
+                if not question_text_for_cache:
+                    continue # 如果无法获取文本，则跳过
                 
                 # 在当前区块内找到正确答案
-                correct_answer_elem = wrap_element.find_element(By.CSS_SELECTOR, config.ANALYSIS_CORRECT_ANSWER_VALUE)
-                correct_answer = correct_answer_elem.text.strip()
+                correct_answer_elem = await wrap_element_locator.locator(config.ANALYSIS_CORRECT_ANSWER_VALUE).text_content()
+                correct_answer = correct_answer_elem.strip()
 
                 if question_text_for_cache and correct_answer:
                     extracted_answers.append({
@@ -333,91 +318,79 @@ class DriverService:
         print(f"已提取 {len(extracted_answers)} 个正确答案。")
         return extracted_answers
 
-    def handle_common_popups(self):
+    async def handle_common_popups(self):
         """处理进入任务后常见的“我知道了”等弹窗。"""
+        # Playwright的click方法会自动等待元素出现和可点击。设置短超时以避免长时间阻塞。
         try:
-            self.short_wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR,
-                                                              config.IKNOW_BUTTON))).click()
+            await self.page.click(config.IKNOW_BUTTON, timeout=3000)
             print("已关闭“我知道了”提示。")
-        except TimeoutException:
+        except PlaywrightTimeoutError:
             pass  # 找不到就算了
 
         try:
-            self.short_wait.until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, config.SYSTEM_OK_BUTTON))).click()
+            await self.page.click(config.SYSTEM_OK_BUTTON, timeout=3000)
             print("已关闭“系统信息”弹窗。")
-        except TimeoutException:
+        except PlaywrightTimeoutError:
             pass  # 找不到就算了
 
-    def handle_submission_confirmation(self):
+    async def handle_submission_confirmation(self):
         """处理点击提交后的“最终确认”弹窗。"""
         try:
-            self.short_wait.until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, config.SUBMIT_CONFIRMATION_BUTTON))
-            ).click()
+            await self.page.click(config.SUBMIT_CONFIRMATION_BUTTON, timeout=3000)
             print("已点击“最终确认提交”弹窗。")
-        except TimeoutException:
+        except PlaywrightTimeoutError:
             pass # 找不到就算了
 
-    def navigate_to_task(self, course_url: str, unit_index: str, task_index: int):
+    async def navigate_to_task(self, course_url: str, unit_index: str, task_index: int):
         """
         导航到指定单元和索引的任务页面，并在导航后处理常见弹窗。
-        采用JS点击，确保导航的健壮性。
+        采用Playwright内置的自动等待和点击，确保导航的健壮性。
         """
         print(f"正在导航到单元 {unit_index}，任务索引 {task_index}...")
 
         # 1. 重新回到课程主页，确保页面状态一致
-        self.driver.get(course_url)
+        await self.page.goto(course_url)
 
         # 2. 定位并点击指定的单元
         try:
-            # 等待所有单元标签加载
-            self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, config.UNIT_TABS)))
+            # Playwright会自动等待所有单元标签加载
+            unit_to_click_locator = self.page.locator(f'[data-index="{unit_index}"]')
             
-            # 精确找到需要点击的单元
-            unit_to_click = self.driver.find_element(By.CSS_SELECTOR, f'[data-index="{unit_index}"]')
-            
-            # 滚动到视图并用JS点击
-            self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", unit_to_click)
-            time.sleep(0.3)
-            self.driver.execute_script("arguments[0].click();", unit_to_click)
+            # 滚动到视图并用Playwright点击
+            await unit_to_click_locator.scroll_into_view_if_needed()
+            await unit_to_click_locator.click()
 
-            # 【关键修复】精确等待被点击的单元高亮
-            self.wait.until(
-                EC.text_to_be_present_in_element_attribute(
-                    (By.CSS_SELECTOR, f'[data-index="{unit_index}"]'), 'class', 'tabActive'
-                )
-            )
+            # Playwright会自动等待元素变为可点击状态，这里额外等待一个属性确保激活
+            await self.page.locator(f'[data-index="{unit_index}"][class*="tabActive"]').wait_for()
             print(f"已确认单元 {unit_index} 已激活。")
 
+        except PlaywrightTimeoutError:
+            print(f"错误：在导航到单元 {unit_index} 时超时，可能未找到单元或页面结构已更改。")
+            raise
         except Exception as e:
-            print(f"错误：在导航到单元 {unit_index} 时失败: {e}")
+            print(f"错误：在导航到单元 {unit_index} 时发生异常: {e}")
             raise
 
         # 3. 定位并点击指定的任务
         try:
-            active_unit_area = self.driver.find_element(By.CSS_SELECTOR, config.ACTIVE_UNIT_AREA)
-            task_elements = active_unit_area.find_elements(By.CSS_SELECTOR, config.TASK_ITEM_CONTAINER)
+            active_unit_area_locator = self.page.locator(config.ACTIVE_UNIT_AREA)
+            task_elements_locators = active_unit_area_locator.locator(config.TASK_ITEM_CONTAINER).all()
 
-            if task_index < len(task_elements):
-                task_to_click = task_elements[task_index]
+            if task_index < len(await task_elements_locators): # 获取所有元素再取长度
+                task_to_click_locator = active_unit_area_locator.locator(config.TASK_ITEM_CONTAINER).nth(task_index)
                 
-                # 【关键修复】在点击前，明确等待目标任务元素变为可点击状态
-                self.wait.until(EC.element_to_be_clickable(task_to_click))
-                
-                # 使用JS点击任务，确保稳定
-                sleep(0.3)
-                self.driver.execute_script("arguments[0].click();", task_to_click)
+                # Playwright的click会自动等待元素变为可点击状态
+                await task_to_click_locator.click()
                 print(f"已进入任务索引 {task_index} 的任务页面。")
 
                 # 等待题目加载标记，针对服务器不稳定，增加等待时间
                 try:
-                    WebDriverWait(self.driver, 20).until(EC.presence_of_element_located((By.CSS_SELECTOR, config.QUESTION_LOADING_MARKER)))
-                except TimeoutException:
+                    await self.page.wait_for_selector(config.QUESTION_LOADING_MARKER, timeout=20000) # 20秒超时
+                except PlaywrightTimeoutError:
                     print("警告: 任务页面加载后，未在20秒内找到题目加载标记。")
 
                 # 调用通用的弹窗处理器
-                self.handle_common_popups()
+                await self.handle_common_popups()
             else:
                 raise ValueError(f"任务索引 {task_index} 超出单元 {unit_index} 的任务范围。")
         except Exception as e:
