@@ -8,26 +8,26 @@ from src.services.driver_service import DriverService
 from src.strategies.base_strategy import BaseStrategy
 
 
-class SingleChoiceStrategy(BaseStrategy):
+class MultipleChoiceStrategy(BaseStrategy):
     """
-    单选题的处理策略。
-    适用于页面上包含明确的A, B, C, D选项的题目。
+    多选题的处理策略。
+    适用于页面上包含明确的A, B, C, D...选项，且可以多选的题目。
     实现了“缓存优先，AI后备”的逻辑。
     """
     def __init__(self, driver_service: DriverService, ai_service: AIService, cache_service: CacheService):
         super().__init__(driver_service, ai_service, cache_service)
-        self.strategy_type = "single_choice"
+        self.strategy_type = "multiple_choice"
 
     @staticmethod
     async def check(driver_service: DriverService) -> bool:
-       """检查当前页面是否为单选题。"""
+       """检查当前页面是否为多选题。"""
        try:
-           # 检查是否存在question-common-abs-choice，且不包含multipleChoice类
-           is_question_wrap_visible = await driver_service.page.locator("div.question-common-abs-choice:not(.multipleChoice)").first.is_visible(timeout=2000)
+           # 检查是否存在question-common-abs-choice，且包含multipleChoice类
+           is_question_wrap_visible = await driver_service.page.locator("div.question-common-abs-choice.multipleChoice").first.is_visible(timeout=2000)
            is_option_wrap_visible = await driver_service.page.locator(".option-wrap").first.is_visible(timeout=2000) # 确保有选项包裹器
            
            if is_question_wrap_visible and is_option_wrap_visible:
-               print("页面初步符合[单选题]特征，应用单选题策略。")
+               print("页面初步符合[多选题]特征，应用多选题策略。")
                return True
            return False
        except PlaywrightError:
@@ -40,13 +40,13 @@ class SingleChoiceStrategy(BaseStrategy):
         return await question_wrap_locator.text_content()
 
     async def execute(self) -> None:
-        """执行单选题的解题逻辑，优先从缓存中查找答案（数组模式）。"""
+        """执行多选题的解题逻辑，优先从缓存中查找答案（数组模式）。"""
         print("="*20)
-        print("开始执行单选题策略...")
+        print("开始执行多选题策略...")
 
         try:
             breadcrumb_parts = await self.driver_service.get_breadcrumb_parts()
-            original_question_locators = await self.driver_service.page.locator(".question-common-abs-reply").all()
+            original_question_locators = await self.driver_service.page.locator("div.question-common-abs-choice.multipleChoice").all() # 定位所有多选题块
             if not breadcrumb_parts or not original_question_locators:
                 print("错误：无法获取页面关键信息（面包屑或题目），终止策略。")
                 return
@@ -88,7 +88,7 @@ class SingleChoiceStrategy(BaseStrategy):
 
             article_section = f"以下是文章内容:\n{article_text}\n\n" if article_text else ""
             prompt = (
-                f"{prompts.SINGLE_CHOICE_PROMPT}\n"
+                f"{prompts.MULTIPLE_CHOICE_PROMPT}\n" # 使用多选题的Prompt
                 f"以下是题目的说明:\n{direction_text}\n\n"
                 f"{article_section}"
                 f"以下是题目和选项:\n{full_questions_and_options_text}"
@@ -103,7 +103,11 @@ class SingleChoiceStrategy(BaseStrategy):
                 return
 
             print(f"AI回答: {json_data}")
-            answers_to_fill = [str(item["answer"]).upper() for item in json_data.get("questions", []) if "answer" in item]
+            # 对于多选题，AI应返回一个包含列表的列表，例如: [['A', 'C'], ['B']]
+            answers_to_fill = [
+                [str(char).upper() for char in item["answer"]] 
+                for item in json_data.get("questions", []) if "answer" in item and isinstance(item["answer"], list)
+            ]
 
         # 3. 统一执行填写和提交流程
         await self._fill_and_submit(answers_to_fill, cache_write_needed, breadcrumb_parts)
@@ -132,7 +136,7 @@ class SingleChoiceStrategy(BaseStrategy):
             print("未找到题目说明（Direction）。")
             return ""
 
-    async def _fill_and_submit(self, answers: list[str], cache_write_needed: bool, breadcrumb_parts: list[str]):
+    async def _fill_and_submit(self, answers: list[list[str]], cache_write_needed: bool, breadcrumb_parts: list[str]):
         """将答案填入网页并提交。在操作前执行严格的预验证。"""
         try:
             print("正在解析并预验证答案...")
@@ -144,12 +148,16 @@ class SingleChoiceStrategy(BaseStrategy):
 
             is_valid = True
             for i, option_wrap_locator in enumerate(option_wraps_locators):
-               answer_char = answers[i]
+               current_q_answers = answers[i] # 可能是 ['A', 'C']
                options_count = await option_wrap_locator.locator(".option").count()
-               answer_index = ord(answer_char) - ord("A")
-               if not (0 <= answer_index < options_count):
-                   print(f"错误：第 {i+1} 题的答案 '{answer_char}' 无效（选项范围是 A-{chr(ord('A')+options_count-1)}），已终止此题作答。")
-                   is_valid = False
+               
+               for answer_char in current_q_answers:
+                   answer_index = ord(answer_char) - ord("A")
+                   if not (0 <= answer_index < options_count):
+                       print(f"错误：第 {i+1} 题的答案 '{answer_char}' 无效（选项范围是 A-{chr(ord('A')+options_count-1)}），已终止此题作答。")
+                       is_valid = False
+                       break
+               if not is_valid:
                    break
 
             if not is_valid:
@@ -157,10 +165,11 @@ class SingleChoiceStrategy(BaseStrategy):
 
             print("预验证通过，开始填写答案...")
             for i, option_wrap_locator in enumerate(option_wraps_locators):
-               answer_char = answers[i]
-               answer_index = ord(answer_char) - ord("A")
-               print(f"第 {i+1} 题，选择选项: {answer_char}")
-               await option_wrap_locator.locator(".option").nth(answer_index).click()
+               current_q_answers = answers[i]
+               for answer_char in current_q_answers:
+                   answer_index = ord(answer_char) - ord("A")
+                   print(f"第 {i+1} 题，选择选项: {answer_char}")
+                   await option_wrap_locator.locator(".option").nth(answer_index).click()
 
             print("答案填写完毕。")
 
@@ -188,6 +197,7 @@ class SingleChoiceStrategy(BaseStrategy):
                 print("警告：未能从解析页面提取到任何答案，无法更新缓存。" )
                 return
 
+            # 对于多选题，需要存储一个包含列表的列表
             correct_answers_list = [item['correct_answer'] for item in extracted_analysis_answers]
             
             self.cache_service.save_task_page_answers(

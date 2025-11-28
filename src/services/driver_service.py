@@ -345,12 +345,16 @@ class DriverService:
                 option_text = await wrap_locator.locator(config.QUESTION_OPTION_WRAP).text_content()
                 full_text = (title_text + " " + option_text).replace('\n', ' ').strip()
                 
-                correct_answer = await wrap_locator.locator(config.ANALYSIS_CORRECT_ANSWER_VALUE).text_content()
+                correct_answer_text = (await wrap_locator.locator(config.ANALYSIS_CORRECT_ANSWER_VALUE).text_content()).strip()
                 
-                if full_text and correct_answer:
+                # 无论单选多选，都处理成列表。多选答案是"A B C"，单选是"A"
+                # .split()会自动处理单个或多个空格，并返回一个列表
+                correct_answer_list = correct_answer_text.split()
+                
+                if full_text and correct_answer_list:
                     extracted_answers.append({
                         'question_text': full_text,
-                        'correct_answer': correct_answer.strip()
+                        'correct_answer': correct_answer_list
                     })
         except Exception as e:
             print(f"提取正确答案时发生错误: {e}")

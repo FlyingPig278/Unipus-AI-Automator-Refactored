@@ -162,6 +162,24 @@
           }
         }
       }
+    },
+    "The joy of friendship": {
+      "5-8 View the world": {
+        "View the world": {
+          "Activity 1": {
+            "type": "multiple_choice",
+            "answers": [
+              [
+                "A",
+                "B",
+                "C",
+                "E",
+                "F"
+              ]
+            ]
+          }
+        }
+      }
     }
   }
 }
