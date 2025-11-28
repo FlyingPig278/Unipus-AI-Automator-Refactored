@@ -1,33 +1,164 @@
 {
   "大学英语听说教程（第二版）1": {
     "Love makes a family": {
-      "2-5 Listen to communicate": {
+      "2-3 Pronunciation": {
+        "Activity 1": {
+          "Activity 1-1": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "A",
+              "B",
+              "C",
+              "C",
+              "B",
+              "A",
+              "B",
+              "C",
+              "B"
+            ]
+          }
+        }
+      }
+    },
+    "A new journey": {
+      "1-4 Listen to understand": {
+        "News report 2": {
+          "News report 2": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "C"
+            ]
+          }
+        },
+        "News report 1": {
+          "News report 1": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "A"
+            ]
+          }
+        },
+        "News report 3": {
+          "News report 3": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "C",
+              "C"
+            ]
+          }
+        }
+      },
+      "1-3 Pronunciation": {
+        "Activity 1": {
+          "Activity 1-1": {
+            "type": "single_choice",
+            "answers": [
+              "A",
+              "B",
+              "B",
+              "B",
+              "A",
+              "C",
+              "A",
+              "B",
+              "C",
+              "B"
+            ]
+          }
+        }
+      },
+      "1-5 Listen to communicate": {
+        "Conversation 1": {
+          "Conversation 1-1": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "C",
+              "C",
+              "C"
+            ]
+          }
+        },
+        "Conversation 2": {
+          "Conversation 2-2": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "C",
+              "A",
+              "A"
+            ]
+          }
+        },
         "Act-out": {
           "Try it out": {
             "type": "single_choice",
-            "questions": {
-              "800f44ea857e4087": {
-                "answer": "C"
-              },
-              "7f93ed0e26ee7623": {
-                "answer": "D"
-              },
-              "d2f52e30f0aaaf40": {
-                "answer": "B"
-              },
-              "167558ca739245e3": {
-                "answer": "F"
-              },
-              "bbb20250301dfc05": {
-                "answer": "G"
-              },
-              "3376be080c1aaca8": {
-                "answer": "E"
-              },
-              "0e05380e0d98f8f4": {
-                "answer": "A"
-              }
-            }
+            "answers": [
+              "C",
+              "E",
+              "B",
+              "A",
+              "D"
+            ]
+          }
+        }
+      },
+      "1-6 Listen to share": {
+        "Passage 1": {
+          "Passage 1-2": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "A",
+              "B"
+            ]
+          }
+        },
+        "Passage 2": {
+          "Passage 2-2": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "C",
+              "D"
+            ]
+          }
+        }
+      },
+      "1-9 Further listening": {
+        "News report": {
+          "News report": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "B",
+              "C"
+            ]
+          }
+        },
+        "Conversation": {
+          "Conversation": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "A",
+              "A",
+              "B"
+            ]
+          }
+        },
+        "Passage": {
+          "Passage": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "C",
+              "B"
+            ]
           }
         }
       }

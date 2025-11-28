@@ -15,3 +15,7 @@ __pycache__/
 # Manually downloaded WebDriver
 msedgedriver.exe
 
+/trace.zip
+/.models/en_US-lessac-medium.onnx
+/.models/en_US-lessac-medium.onnx.json
+/question_types.md

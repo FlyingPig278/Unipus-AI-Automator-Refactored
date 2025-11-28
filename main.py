@@ -4,10 +4,12 @@ from src.services.driver_service import DriverService
 from src.services.ai_service import AIService
 from src.services.cache_service import CacheService
 from src.strategies.single_choice import SingleChoiceStrategy
+from src.strategies.voice_upload_strategy import VoiceUploadStrategy
 
 # 将所有可用策略集中存放在一个列表中，方便管理
 AVAILABLE_STRATEGIES = [
    SingleChoiceStrategy,
+   VoiceUploadStrategy,
    # 未来新的策略类将在这里添加
 ]
 

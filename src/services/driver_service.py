@@ -1,11 +1,16 @@
 # src/services/driver_service.py
 import asyncio
-from playwright.async_api import async_playwright, Playwright, Browser, Page, Error as PlaywrightError
+import re
+import time
+import os
+from time import sleep
+import base64 # 新增导入
+import json # 新增导入
+import urllib.parse # 新增导入
+from playwright.async_api import async_playwright, Playwright, Browser, Page, expect, Error as PlaywrightError
 from typing import List, Tuple
 
-from playwright.sync_api import expect
-
-import src.config as config
+import src.config as config  # 导入我们的配置
 
 class DriverService:
     """服务类，用于封装所有Playwright浏览器操作。"""
@@ -22,13 +27,20 @@ class DriverService:
         print("正在启动Playwright浏览器...")
         self.playwright = await async_playwright().start()
         self.browser = await self.playwright.chromium.launch(headless=headless)
-        self.page = await self.browser.new_page()
+        context = await self.browser.new_context()
+        await context.tracing.start(screenshots=True, snapshots=True, sources=True)
+        self.page = await context.new_page()
+        # self.page = await self.browser.new_page()
         self.page.set_default_timeout(30000) # 设置30秒默认超时
         print("Playwright浏览器和新页面已成功启动。")
 
     async def stop(self):
         """优雅地关闭浏览器和Playwright实例。"""
         print("正在关闭浏览器...")
+        if self.page and self.page.context:
+            print("正在保存Playwright追踪文件...")
+            await self.page.context.tracing.stop(path="trace.zip")  # 保存追踪文件到项目根目录
+            print("Playwright追踪文件已保存为 trace.zip。")
         if self.browser:
             await self.browser.close()
         if self.playwright:
@@ -44,8 +56,8 @@ class DriverService:
         await self.page.get_by_role("checkbox", name="我已阅读并同意").check()
 
         print("正在输入凭据...")
-        await self.page.get_by_placeholder("请输入手机号/邮箱/用户名").fill(config.USERNAME)
-        await self.page.get_by_placeholder("请输入密码").fill(config.PASSWORD)
+        await self.page.get_by_role("textbox", name="手机号/邮箱/用户名").fill(config.USERNAME)
+        await self.page.get_by_role("textbox", name="密码").fill(config.PASSWORD)
         
         print("正在点击登录按钮...")
         await self.page.get_by_role("button", name="登录").click()
@@ -93,7 +105,7 @@ class DriverService:
         """尝试在当前页面查找<audio>或<video>元素。"""
         try:
             media_locator = self.page.locator(config.MEDIA_SOURCE_ELEMENTS).first
-            await media_locator.wait_for(timeout=3000)
+            print(f"查找结果：{await media_locator.text_content()}")
             url = await media_locator.get_attribute('src')
             tag_name = await media_locator.evaluate('element => element.tagName.toLowerCase()')
             return url, tag_name
@@ -119,6 +131,78 @@ class DriverService:
             print(f"提取完整目录树时发生错误: {e}")
             return []
 
+    async def get_auth_info(self) -> dict:
+        """
+        通过拦截网络请求，从浏览器环境中获取动态的认证信息。
+        """
+        print("正在设置网络监听以捕获认证信息...")
+        auth_info = {"Authorization": None, "userId": None, "auth_header": None}
+
+        # 创建一个 Future 对象，用于在信息捕获后发出信号
+        headers_found = asyncio.Future()
+
+        def intercept_request(request):
+            # 捕获 auth 头 (用于 soe/api)
+            if "zt.unipus.cn/soe/api" in request.url and request.headers.get("auth"):
+                if not auth_info["auth_header"]:
+                    auth_info["auth_header"] = request.headers["auth"]
+                    print("成功捕获 'auth' 头。")
+            
+            # 捕获 Authorization 头 (用于 ucontent.unipus.cn)
+            if "ucontent.unipus.cn" in request.url and request.headers.get("authorization"):
+                if not auth_info["Authorization"]:
+                    auth_info["Authorization"] = request.headers["authorization"]
+                    print("成功捕获 'Authorization' 头。")
+
+            # 如果两个都找到了，就完成Future
+            if auth_info["auth_header"] and auth_info["Authorization"] and not headers_found.done():
+                headers_found.set_result(True)
+
+        self.page.on("request", intercept_request)
+
+        try:
+            # 刷新页面以触发各种API请求，从而让我们的监听器捕获到所需信息
+            print("将重新加载页面以触发网络请求...")
+            await self.page.reload(wait_until="networkidle")
+            
+        except Exception as e:
+            print(f"网络拦截或页面刷新时发生错误: {e}")
+        
+        self.page.remove_listener("request", intercept_request)
+
+        # 尝试从Cookie中解析userId (优先级最高，因为用户确认了其可靠性)
+
+        try:
+            cookies = await self.page.context.cookies()
+            for cookie in cookies:
+                if cookie['name'] == 'sensorsdata2015jssdkcross':
+                    # Cookie值是URL编码的JSON
+                    decoded_cookie_value = urllib.parse.unquote(cookie['value'])
+                    cookie_json = json.loads(decoded_cookie_value)
+                    user_id_from_cookie = cookie_json.get("distinct_id") or cookie_json.get("$identity_login_id")
+                    if user_id_from_cookie:
+                        auth_info["userId"] = user_id_from_cookie
+                        print("成功从sensorsdata2015jssdkcross Cookie中获取userId。")
+                        break
+        except Exception as e:
+            print(f"从Cookie中解析userId时出错: {e}")
+
+        # 如果仍然没有userId，尝试从localStorage获取作为最后的补充
+        try:
+            if not auth_info.get("userId"):
+                user_id_from_ls = await self.page.evaluate("() => localStorage.getItem('openId') || (window.vuex_state && window.vuex_state.userId)")
+                if user_id_from_ls:
+                    auth_info["userId"] = user_id_from_ls
+                    print("成功从localStorage获取userId。")
+        except Exception:
+            pass # 忽略错误
+
+        print(f"获取到的认证信息: {auth_info}")
+        if not all([auth_info["Authorization"], auth_info["auth_header"], auth_info["userId"]]):
+             print("警告：未能获取到完整的认证信息，API调用可能会失败。")
+             
+        return auth_info
+
     async def get_pending_tasks(self) -> list:
         """获取当前课程页面中所有未完成的必修任务。"""
         print("正在获取待完成任务列表...")
@@ -143,7 +227,7 @@ class DriverService:
                 if "tabActive" not in (await unit_locator.get_attribute("class")):
                     await unit_locator.scroll_into_view_if_needed()
                     await unit_locator.click()
-                    await expect(self.page.locator(f'[data-index="{unit_index}"]')).to_have_class(config.ACTIVE_UNIT_AREA)
+                    await self.page.locator(f'[data-index="{unit_index}"][class*="tabActive"]').wait_for()
 
                 active_area_locator = self.page.locator(config.ACTIVE_UNIT_AREA)
                 await active_area_locator.locator(config.TASK_ITEM_CONTAINER).first.wait_for()
@@ -151,7 +235,8 @@ class DriverService:
 
                 for i, task_locator in enumerate(task_locators):
                     text_content = await task_locator.text_content()
-                    if "必修" in text_content and "已完成" not in text_content:
+                    # if "必修" in text_content and "已完成" not in text_content:
+                    if True:
                         task_name = await task_locator.locator(config.TASK_ITEM_TYPE_NAME).text_content()
                         pending_tasks.append({
                             "unit_index": unit_index, "unit_name": unit_name,
@@ -160,6 +245,8 @@ class DriverService:
                         })
             except Exception as e:
                 print(f"处理单元 '{unit_name}' 时出错: {e}")
+                if unit_name=='Unit 5':
+                    raise
         print(f"待完成任务列表获取完毕，共 {len(pending_tasks)} 个任务。")
         return pending_tasks
 
@@ -190,9 +277,10 @@ class DriverService:
 
         # 3. 定位并点击指定的任务
         try:
-            # 找到对应单元下的所有任务项
+            # 找到对应单元下的所有任务未在本页找到可用的音频或视频文件。项
             task_elements_locators = self.page.locator(f"{config.ACTIVE_UNIT_AREA} {config.TASK_ITEM_CONTAINER}")
             # 点击第 task_index 个任务
+            await asyncio.sleep(0.3) # TODO:暂不明确应等待什么元素
             await task_elements_locators.nth(task_index).click()
             print(f"已进入任务索引 {task_index} 的任务页面。")
 
@@ -209,19 +297,27 @@ class DriverService:
             raise
     
     async def handle_common_popups(self):
-        """处理进入任务后常见的“我知道了”等弹窗。"""
-        # Playwright的click方法会自动等待元素出现和可点击。设置短超时以避免长时间阻塞。
+        """处理进入任务后常见的弹窗，采用短超时优化。"""
+        # 1. 快速处理“鼠标取词”引导 (如果存在)
         try:
-            # 统一使用 get_by_role 定位“我知道了”按钮
+            # 使用非常短的超时，如果弹窗在0.5秒内没出现，就立即跳过
+            await self.page.locator(".iKnow").click(timeout=500)
+            print("已关闭“鼠标取词”新手引导。")
+        except PlaywrightError:
+            pass  # 0.5秒内未找到，说明它不存在，直接继续
+
+        # 2. 处理其他可能出现的、需要更长等待时间的弹窗
+        try:
             await self.page.get_by_role("button", name="我知道了").click(timeout=3000)
-            print("已关闭“我知道了”提示/系统信息弹窗。")
+            print("已关闭“任务信息”等弹窗。")
         except PlaywrightError:
             pass
+			
             
     async def handle_submission_confirmation(self):
         """处理点击提交后的“最终确认”弹窗。"""
         try:
-            await self.page.get_by_role("button", name="我知道了").click(timeout=3000) # 假设确认按钮文本也是“我知道了”
+            await self.page.get_by_role("button", name="确定").click(timeout=500)
             print("已点击“最终确认提交”弹窗。")
         except PlaywrightError:
             pass

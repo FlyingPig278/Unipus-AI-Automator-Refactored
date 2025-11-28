@@ -30,7 +30,7 @@ TASK_ITEM_TYPE_NAME = '[class*="courses-unit_taskTypeName"]'   # 任务项的类
 
 # Question Page
 BREADCRUMB_TEXT_ELEMENTS = ".pc-break-crumb .pc-break-crumb-text"
-MEDIA_SOURCE_ELEMENTS = "audio, video" # 组合选择器，用于同时查找音频和视频
+MEDIA_SOURCE_ELEMENTS = ".audio-material-wrapper audio, .video-material-wrapper video" # 精确匹配作为问题材料的音频或视频
 
 # HTTP Headers for requests
 HEADERS = {
@@ -45,4 +45,4 @@ QUESTION_WRAP = ".question-common-abs-reply" # 每个独立题目（含题目、
 SUMMARY_QUESTION_NUMBER = ".answer-info .item-right"
 ANALYSIS_QUESTION_TITLE = ".ques-title"
 QUESTION_OPTION_WRAP = ".option-wrap"
-ANALYSIS_CORRECT_ANSWER_VALUE = ".analysis-item-title + .anal_item-content .component-htmlview"
+ANALYSIS_CORRECT_ANSWER_VALUE = ".analysis-item:has(.analysis-item-title:has-text('正确答案：')) .component-htmlview"

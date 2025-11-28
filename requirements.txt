@@ -10,3 +10,8 @@ SpeechRecognition
 
 # For environment variables
 python-dotenv
+httpx
+websockets
+
+piper-tts
+onnxruntime

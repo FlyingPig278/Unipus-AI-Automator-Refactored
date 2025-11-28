@@ -18,8 +18,8 @@ class SingleChoiceStrategy(BaseStrategy):
         super().__init__(driver_service, ai_service, cache_service)
         self.strategy_type = "single_choice"
 
-   @staticmethod
-   async def check(driver_service: DriverService) -> bool:
+    @staticmethod
+    async def check(driver_service: DriverService) -> bool:
        """检查当前页面是否为单选题。"""
        try:
            # Playwright的is_visible()方法会自动等待元素出现，非常适合用于检查
@@ -136,41 +136,41 @@ class SingleChoiceStrategy(BaseStrategy):
     async def _fill_and_submit(self, answers: list[str], cache_write_needed: bool, breadcrumb_parts: list[str]):
         """将答案填入网页并提交。在操作前执行严格的预验证。"""
         try:
-                       print("正在解析并预验证答案...")
-                       option_wraps_locators = await self.driver_service.page.locator(".option-wrap").all()
-            
-                       if len(answers) != len(option_wraps_locators):
-                           print(f"错误：收到的答案数量 ({len(answers)}) 与页面题目数量 ({len(option_wraps_locators)}) 不匹配，为避免错位，已终止此题作答。")
-                           return
-            
-                       is_valid = True
-                       for i, option_wrap_locator in enumerate(option_wraps_locators):
-                           answer_char = answers[i]
-                           options_count = await option_wrap_locator.locator(".option").count()
-                           answer_index = ord(answer_char) - ord("A")
-                           if not (0 <= answer_index < options_count):
-                               print(f"错误：第 {i+1} 题的答案 '{answer_char}' 无效（选项范围是 A-{chr(ord('A')+options_count-1)}），已终止此题作答。")
-                               is_valid = False
-                               break
-                       
-                       if not is_valid:
-                           return
-            
-                       print("预验证通过，开始填写答案...")
-                       for i, option_wrap_locator in enumerate(option_wraps_locators):
-                           answer_char = answers[i]
-                           answer_index = ord(answer_char) - ord("A")
-                           print(f"第 {i+1} 题，选择选项: {answer_char}")
-                           await option_wrap_locator.locator(".option").nth(answer_index).click()
-                       
-                       print("答案填写完毕。")
-            
-                       confirm = await asyncio.to_thread(input, "AI或缓存已选择答案。是否确认提交？[Y/n]: ")
-                       if confirm.strip().upper() in ["Y", ""]:
-                           await self.driver_service.page.click(".btn")
-                           print("答案已提交。正在处理最终确认弹窗...")
-                           await self.driver_service.handle_submission_confirmation()
-                if cache_write_needed: # Changed from cache_write_needed
+            print("正在解析并预验证答案...")
+            option_wraps_locators = await self.driver_service.page.locator(".option-wrap").all()
+
+            if len(answers) != len(option_wraps_locators):
+                print(f"错误：收到的答案数量 ({len(answers)}) 与页面题目数量 ({len(option_wraps_locators)}) 不匹配，为避免错位，已终止此题作答。")
+                return
+
+            is_valid = True
+            for i, option_wrap_locator in enumerate(option_wraps_locators):
+               answer_char = answers[i]
+               options_count = await option_wrap_locator.locator(".option").count()
+               answer_index = ord(answer_char) - ord("A")
+               if not (0 <= answer_index < options_count):
+                   print(f"错误：第 {i+1} 题的答案 '{answer_char}' 无效（选项范围是 A-{chr(ord('A')+options_count-1)}），已终止此题作答。")
+                   is_valid = False
+                   break
+
+            if not is_valid:
+               return
+
+            print("预验证通过，开始填写答案...")
+            for i, option_wrap_locator in enumerate(option_wraps_locators):
+               answer_char = answers[i]
+               answer_index = ord(answer_char) - ord("A")
+               print(f"第 {i+1} 题，选择选项: {answer_char}")
+               await option_wrap_locator.locator(".option").nth(answer_index).click()
+
+            print("答案填写完毕。")
+
+            confirm = await asyncio.to_thread(input, "AI或缓存已选择答案。是否确认提交？[Y/n]: ")
+            if confirm.strip().upper() in ["Y", ""]:
+                await self.driver_service.page.click(".btn")
+                print("答案已提交。正在处理最终确认弹窗...")
+                await self.driver_service.handle_submission_confirmation()
+                if cache_write_needed:
                     print("准备从解析页面提取正确答案并写入缓存...")
                     await self._write_answers_to_cache(breadcrumb_parts)
             else:
