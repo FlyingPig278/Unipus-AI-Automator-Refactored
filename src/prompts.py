@@ -114,3 +114,28 @@ FILL_IN_THE_BLANK_PROMPT = """
 以下是带有空白的题目文本:
 {question_text}
 """
+
+SHORT_ANSWER_PROMPT = """
+你是一个用于解答U校园英语题的AI助手。请根据以下提供的上下文信息（包括题目说明、文章或听力原文）和一系列子问题，为每一个子问题生成一个简洁明了的英文回答。
+
+请将你的所有回答以一个JSON对象的形式返回，该对象包含一个名为 "answers" 的数组，数组中的每个字符串都应对应一个子问题的答案。
+
+JSON格式如下:
+{{
+  "answers": [
+    "Your concise answer to the first sub-question.",
+    "Your concise answer to the second sub-question.",
+    "..."
+  ]
+}}
+
+---
+【题目说明】:
+{direction_text}
+
+【文章或听力原文内容】:
+{article_text}
+
+【子问题列表】:
+{sub_questions}
+"""

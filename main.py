@@ -10,6 +10,7 @@ from src.strategies.multiple_choice_strategy import MultipleChoiceStrategy
 from src.strategies.discussion_strategy import DiscussionStrategy
 from src.strategies.drag_and_drop_strategy import DragAndDropStrategy
 from src.strategies.fill_in_the_blank_strategy import FillInTheBlankStrategy
+from src.strategies.short_answer_strategy import ShortAnswerStrategy
 
 # ==============================================================================
 # 全局可用策略列表
@@ -20,6 +21,7 @@ AVAILABLE_STRATEGIES = [
     CheckboxStrategy,           # 自检打钩题
     DragAndDropStrategy,        # 拖拽排序题
     FillInTheBlankStrategy,     # 填空题
+    ShortAnswerStrategy,        # 简答题
     MultipleChoiceStrategy,     # 多选题
     SingleChoiceStrategy,       # 单选题
     DiscussionStrategy          # 讨论题
