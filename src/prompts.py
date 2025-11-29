@@ -67,5 +67,25 @@ JSON格式如下:
 {sub_questions}
 """
 
+DRAG_AND_DROP_PROMPT = """
+你是一个用于解答U校园英语题的AI助手。你的任务是根据提供的【媒体内容】（如果有）和【待排序选项列表】，将选项进行正确排序。
 
+你需要返回一个JSON对象，其中包含一个名为 `ordered_options` 的数组。该数组应只包含【待排序选项列表】中每个选项开头的字母，并按照你认为正确的顺序排列。
 
+例如，如果【待排序选项列表】是：
+- A. Second event
+- B. First event
+- C. Third event
+
+而你认为正确的顺序是 B, A, C，那么你应该返回：
+{{
+  "ordered_options": ["B", "A", "C"]
+}}
+
+---
+【媒体内容】:
+{media_transcript}
+
+【待排序选项列表】:
+{options_list}
+"""

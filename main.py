@@ -7,7 +7,8 @@ from src.strategies.checkbox_strategy import CheckboxStrategy
 from src.strategies.single_choice import SingleChoiceStrategy
 from src.strategies.voice_upload_strategy import VoiceUploadStrategy
 from src.strategies.multiple_choice_strategy import MultipleChoiceStrategy
-from src.strategies.discussion_strategy import DiscussionStrategy # 新增导入
+from src.strategies.discussion_strategy import DiscussionStrategy
+from src.strategies.drag_and_drop_strategy import DragAndDropStrategy # 新增导入
 
 # 将所有可用策略集中存放在一个列表中，方便管理
 AVAILABLE_STRATEGIES = [
@@ -15,7 +16,8 @@ AVAILABLE_STRATEGIES = [
     VoiceUploadStrategy,
     CheckboxStrategy,
     MultipleChoiceStrategy,
-    DiscussionStrategy, # 新增策略
+    DiscussionStrategy,
+    DragAndDropStrategy, # 新增策略
    # 未来新的策略类将在这里添加
 ]
 

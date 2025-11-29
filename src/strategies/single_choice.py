@@ -187,13 +187,11 @@ class SingleChoiceStrategy(BaseStrategy):
             if not extracted_analysis_answers:
                 print("警告：未能从解析页面提取到任何答案，无法更新缓存。" )
                 return
-
-            correct_answers_list = [item['correct_answer'] for item in extracted_analysis_answers]
             
             self.cache_service.save_task_page_answers(
                 breadcrumb_parts,
                 self.strategy_type,
-                correct_answers_list
+                extracted_analysis_answers
             )
 
         except Exception as e:

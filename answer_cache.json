@@ -169,13 +169,47 @@
           "Activity 1": {
             "type": "multiple_choice",
             "answers": [
-              [
-                "A",
-                "B",
-                "C",
-                "E",
-                "F"
-              ]
+              "A",
+              "B",
+              "C",
+              "E",
+              "F"
+            ]
+          }
+        }
+      },
+      "5-5 Listen to communicate": {
+        "Conversation 1": {
+          "Conversation 1-1": {
+            "type": "single_choice",
+            "answers": [
+              "A",
+              "D",
+              "B",
+              "C"
+            ]
+          }
+        }
+      }
+    },
+    "Heroes around us": {
+      "3-8 View the world": {
+        "View the world": {
+          "Activity 1": {
+            "type": "drag_and_drop_js_injection",
+            "answers": [
+              "B",
+              "A",
+              "E",
+              "D",
+              "C",
+              "K",
+              "G",
+              "J",
+              "I",
+              "H",
+              "L",
+              "F"
             ]
           }
         }

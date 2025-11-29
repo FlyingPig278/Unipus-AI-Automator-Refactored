@@ -333,30 +333,36 @@ class DriverService:
             print("错误：未能进入答案解析页面。")
             raise
 
-    async def extract_all_correct_answers_from_analysis_page(self) -> list[dict]:
-        """从答案解析页面提取所有正确答案。"""
+    async def extract_all_correct_answers_from_analysis_page(self) -> list[str]:
+        """
+        从答案解析页面提取所有正确答案，并将它们平铺到一个列表中。
+        适用于单选题（一页多题）和多选题/拖拽题（一页一题）的场景。
+        """
         print("正在提取所有题目的正确答案...")
-        extracted_answers = []
+        all_answers = []
         try:
-            question_wraps = await self.page.locator(config.QUESTION_WRAP).all()
-            for wrap_locator in question_wraps:
-                # 提取用于缓存键的文本
-                title_text = await wrap_locator.locator(config.ANALYSIS_QUESTION_TITLE).text_content()
-                option_text = await wrap_locator.locator(config.QUESTION_OPTION_WRAP).text_content()
-                full_text = (title_text + " " + option_text).replace('\n', ' ').strip()
+            # 找到页面上所有包含答案解析的区块
+            analysis_wraps = await self.page.locator(".component-analysis").all()
+            
+            if not analysis_wraps:
+                print("未找到任何 .component-analysis 区块，跳过答案提取。")
+                return []
+
+            for i, analysis_locator in enumerate(analysis_wraps):
+                # 在每个 .component-analysis 区块内，找到正确答案
+                correct_answer_locator = analysis_locator.locator(".analysis-item:has(.analysis-item-title:has-text('正确答案：')) .component-htmlview")
                 
-                correct_answer_text = (await wrap_locator.locator(config.ANALYSIS_CORRECT_ANSWER_VALUE).text_content()).strip()
+                await correct_answer_locator.wait_for(state='visible', timeout=10000)
+                correct_answer_text = (await correct_answer_locator.text_content()).strip()
                 
-                # 无论单选多选，都处理成列表。多选答案是"A B C"，单选是"A"
-                # .split()会自动处理单个或多个空格，并返回一个列表
-                correct_answer_list = correct_answer_text.split()
-                
-                if full_text and correct_answer_list:
-                    extracted_answers.append({
-                        'question_text': full_text,
-                        'correct_answer': correct_answer_list
-                    })
+                # 分割字符串（例如 "A B C" -> ['A', 'B', 'C']），并将其展平到最终列表中
+                answers = correct_answer_text.split()
+                if answers:
+                    all_answers.extend(answers)
+            
+            print(f"已提取到所有正确答案: {all_answers}")
+            
         except Exception as e:
             print(f"提取正确答案时发生错误: {e}")
-        print(f"已提取 {len(extracted_answers)} 个正确答案。")
-        return extracted_answers
+            
+        return all_answers
