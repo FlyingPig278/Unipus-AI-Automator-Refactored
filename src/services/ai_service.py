@@ -19,7 +19,7 @@ class LocalTTSEngine:
     使用Piper TTS的本地文本转语音引擎。
     负责模型管理和语音合成。
     """
-    def __init__(self, model: str = "en_US-lessac-medium"):
+    def __init__(self, model: str = "en_US-libritts_r-medium"):
         self.model_name = model
         # 将模型文件存放在项目根目录的.models文件夹中，方便管理
         self.models_dir = Path(".models")
@@ -34,35 +34,51 @@ class LocalTTSEngine:
             await self._download_model()
 
     async def _download_model(self):
-        """从HuggingFace下载Piper语音模型和配置文件。"""
-        base_url = f"https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/{self.model_name}"
-        
-        # 下载模型文件
+        """从HuggingFace动态构建URL并下载Piper语音模型。"""
         try:
+            # 从模型名称解析URL组件，例如 "en_US-lessac-medium"
+            parts = self.model_name.split('-')
+            if len(parts) != 3:
+                raise ValueError(f"模型名称 '{self.model_name}' 格式不正确，应为 'locale-voice-quality'。")
+            
+            locale, voice, quality = parts
+            lang = locale.split('_')[0]
+
+            base_url = f"https://huggingface.co/rhasspy/piper-voices/resolve/main/{lang}/{locale}/{voice}/{quality}/{self.model_name}"
+            
+            print(f"根据模型名称动态构建下载URL: {base_url}")
+            
+            # 下载模型文件
             print(f"正在下载模型: {self.model_name}.onnx...")
             process = await asyncio.create_subprocess_shell(
                 f'curl -L -o "{self.model_path}" "{base_url}.onnx"'
             )
             await process.wait()
             
+            # 下载模型配置文件
             print(f"正在下载模型配置文件: {self.model_name}.onnx.json...")
             process = await asyncio.create_subprocess_shell(
                 f'curl -L -o "{self.model_config_path}" "{base_url}.onnx.json"'
             )
             await process.wait()
             
-            if self.model_path.exists() and self.model_config_path.exists():
-                print("✅ 模型下载完成。")
+            if self.model_path.exists() and self.model_path.stat().st_size > 1000 and \
+               self.model_config_path.exists() and self.model_config_path.stat().st_size > 100:
+                print("✅ 模型下载和文件大小校验完成。")
             else:
-                raise FileNotFoundError("模型文件下载后未找到。")
+                raise FileNotFoundError("模型文件下载失败或文件大小异常。请检查.models文件夹下的文件。")
                 
         except Exception as e:
             print(f"❌ 模型下载失败: {e}")
+            # 如果下载失败，删除可能已创建的损坏文件
+            if self.model_path.exists(): self.model_path.unlink()
+            if self.model_config_path.exists(): self.model_config_path.unlink()
             raise
 
-    async def synthesize(self, text: str) -> bytes | None:
+    async def synthesize(self, text: str, length_scale: float = 1.0, noise_scale: float = 0.667, noise_w: float = 0.8) -> bytes | None:
         """
         使用Piper TTS将文本合成为语音，并返回WAV文件的字节数据。
+        新增length_scale, noise_scale, noise_w参数以控制语速和发音风格。
         """
         # 创建一个临时的WAV文件路径
         output_path = Path(tempfile.gettempdir()) / f"piper_output_{uuid.uuid4().hex}.wav"
@@ -70,11 +86,14 @@ class LocalTTSEngine:
         try:
             await self.ensure_model_exists()
 
-            print(f"正在使用Piper TTS合成语音: '{text[:30]}...'")
+            print(f"正在使用Piper TTS合成语音 (语速: {length_scale}, noise_scale: {noise_scale}, noise_w: {noise_w}): '{text[:30]}...'")
             piper_command = [
                 "piper", 
                 "--model", str(self.model_path),
-                "--output_file", str(output_path)
+                "--output_file", str(output_path),
+                "--length_scale", str(length_scale), # 添加语速控制参数
+                "--noise_scale", str(noise_scale),     # 添加噪声控制参数
+                "--noise_w", str(noise_w)              # 添加音素宽度变化控制参数
             ]
             
             process = await asyncio.create_subprocess_exec(
@@ -126,12 +145,12 @@ class AIService:
         self.local_tts_engine = LocalTTSEngine()
         print("本地TTS引擎初始化完毕。")
 
-    async def text_to_wav(self, text: str) -> str | None:
+    async def text_to_wav(self, text: str, length_scale: float = 1.0, noise_scale: float = 0.667, noise_w: float = 0.8) -> str | None:
         """
         使用本地TTS引擎将文本转换为WAV格式的音频文件。
         """
-        # 直接调用本地TTS引擎的synthesize方法
-        return await self.local_tts_engine.synthesize(text)
+        # 直接调用本地TTS引擎的synthesize方法，并传递语速和发音风格参数
+        return await self.local_tts_engine.synthesize(text, length_scale, noise_scale, noise_w)
 		
     def transcribe_media_from_url(self, url: str) -> str:
         """

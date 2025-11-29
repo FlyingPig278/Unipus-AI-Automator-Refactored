@@ -89,3 +89,28 @@ DRAG_AND_DROP_PROMPT = """
 【待排序选项列表】:
 {options_list}
 """
+
+FILL_IN_THE_BLANK_PROMPT = """
+请帮我解答以下英语填空题。根据提供的上下文（文章或听力原文）以及题目文本，为每一个空白（由三个下划线 "___" 标识）提供最合适的单词或短语。
+
+你需要将所有答案以JSON格式输出。JSON对象应包含一个名为 "questions" 的数组，该数组只包含一个对象，其 "answer" 字段是一个包含所有应填入内容的字符串列表。
+
+例如，如果题目是 "The cat sat ___ the mat. The dog sat ___ the chair."，你应该返回：
+{{
+  "questions": [
+    {{
+      "answer": ["on", "beside"]
+    }}
+  ]
+}}
+
+---
+以下是题目的说明:
+{direction_text}
+
+以下是文章或听力原文内容:
+{article_text}
+
+以下是带有空白的题目文本:
+{question_text}
+"""

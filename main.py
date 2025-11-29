@@ -8,17 +8,21 @@ from src.strategies.single_choice import SingleChoiceStrategy
 from src.strategies.voice_upload_strategy import VoiceUploadStrategy
 from src.strategies.multiple_choice_strategy import MultipleChoiceStrategy
 from src.strategies.discussion_strategy import DiscussionStrategy
-from src.strategies.drag_and_drop_strategy import DragAndDropStrategy # 新增导入
+from src.strategies.drag_and_drop_strategy import DragAndDropStrategy
+from src.strategies.fill_in_the_blank_strategy import FillInTheBlankStrategy
 
-# 将所有可用策略集中存放在一个列表中，方便管理
+# ==============================================================================
+# 全局可用策略列表
+# 策略的顺序很重要，会按照从上到下的顺序进行检查。
+# ==============================================================================
 AVAILABLE_STRATEGIES = [
-    SingleChoiceStrategy,
-    VoiceUploadStrategy,
-    CheckboxStrategy,
-    MultipleChoiceStrategy,
-    DiscussionStrategy,
-    DragAndDropStrategy, # 新增策略
-   # 未来新的策略类将在这里添加
+    VoiceUploadStrategy,        # 语音上传题
+    CheckboxStrategy,           # 自检打钩题
+    DragAndDropStrategy,        # 拖拽排序题
+    FillInTheBlankStrategy,     # 填空题
+    MultipleChoiceStrategy,     # 多选题
+    SingleChoiceStrategy,       # 单选题
+    DiscussionStrategy          # 讨论题
 ]
 
 async def run_strategy_on_current_page(browser_service: DriverService, ai_service: AIService, cache_service: CacheService):

@@ -53,7 +53,15 @@ class DiscussionStrategy(BaseStrategy):
                 main_title=main_title,
                 sub_questions=sub_questions_text
             )
+            
+            print("=" * 50)
+            print("即将发送给 AI 的完整 Prompt 如下：")
             print(prompt)
+            print("=" * 50)
+            confirm = await asyncio.to_thread(input, "是否确认发送此 Prompt？[Y/n]: ")
+            if confirm.strip().upper() not in ["Y", ""]:
+                print("用户取消了 AI 调用，终止当前任务。")
+                return
 
             print("正在请求AI生成评论...")
             ai_response = self.ai_service.get_chat_completion(prompt)

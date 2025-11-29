@@ -21,6 +21,10 @@ DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
 WHISPER_MODEL = "base"
 DEEPSEEK_CHAT_MODEL = "deepseek-chat"
 
+# --- Debugging ---
+# 如果设置为True，程序将忽略所有缓存，强制调用AI进行解答，方便调试Prompt。
+FORCE_AI = True
+
 # --- CSS Selectors ---
 # Course Page
 UNIT_TABS = "[data-index]"

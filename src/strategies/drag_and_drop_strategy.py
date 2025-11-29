@@ -1,7 +1,7 @@
 import asyncio
 import json
 from playwright.async_api import Error as PlaywrightError
-from src import prompts
+from src import prompts, config
 from src.strategies.base_strategy import BaseStrategy
 from src.services.driver_service import DriverService
 from src.services.ai_service import AIService
@@ -45,10 +45,12 @@ class DragAndDropStrategy(BaseStrategy):
 
             # 1. 检查缓存
             task_page_cache = self.cache_service.get_task_page_cache(breadcrumb_parts)
-            if task_page_cache and task_page_cache.get('type') == self.strategy_type and task_page_cache.get('answers'):
+            # 增加FORCE_AI判断
+            if not config.FORCE_AI and task_page_cache and task_page_cache.get('type') == self.strategy_type and task_page_cache.get('answers'):
                 print("在缓存中找到此页面的答案。")
-                # 直接获取完整的答案列表
                 target_order = task_page_cache['answers']
+            elif config.FORCE_AI and task_page_cache:
+                print("FORCE_AI为True，强制忽略缓存，调用AI。")
             
             # 2. 如果缓存未命中，则调用AI
             if not target_order:
@@ -66,6 +68,16 @@ class DragAndDropStrategy(BaseStrategy):
                     media_transcript=transcript,
                     options_list=options_text_for_ai
                 )
+
+                print("=" * 50)
+                print("即将发送给 AI 的完整 Prompt 如下：")
+                print(prompt)
+                print("=" * 50)
+                confirm = await asyncio.to_thread(input, "是否确认发送此 Prompt？[Y/n]: ")
+                if confirm.strip().upper() not in ["Y", ""]:
+                    print("用户取消了 AI 调用，终止当前任务。")
+                    return
+
                 print("正在请求AI获取正确顺序...")
                 ai_response = self.ai_service.get_chat_completion(prompt)
                 if not ai_response or "ordered_options" not in ai_response:

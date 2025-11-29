@@ -33,12 +33,6 @@ class SingleChoiceStrategy(BaseStrategy):
        except PlaywrightError:
            return False
 
-    async def _get_full_question_text_for_ai(self, question_wrap_locator) -> str:
-        """
-        从单个题目区块中提取完整的题目和选项文本，用于AI Prompt。
-        """
-        return await question_wrap_locator.text_content()
-
     async def execute(self) -> None:
         """执行单选题的解题逻辑，优先从缓存中查找答案（数组模式）。"""
         print("="*20)
@@ -57,11 +51,12 @@ class SingleChoiceStrategy(BaseStrategy):
         cache_write_needed = False
         answers_to_fill = []
 
-        # 1. 一次性获取整个页面的缓存
+        # 1. 检查缓存
         task_page_cache = self.cache_service.get_task_page_cache(breadcrumb_parts)
         
         use_cache = False
-        if task_page_cache and task_page_cache.get('type') == self.strategy_type:
+        # 增加FORCE_AI判断
+        if not config.FORCE_AI and task_page_cache and task_page_cache.get('type') == self.strategy_type:
             print("在缓存中找到此页面的记录，正在校验...")
             cached_answers = task_page_cache.get('answers', [])
             if len(cached_answers) == len(original_question_locators):
@@ -69,6 +64,8 @@ class SingleChoiceStrategy(BaseStrategy):
                 answers_to_fill = cached_answers
             else:
                 print("缓存答案数量与当前页面题目数量不匹配，将调用AI。")
+        elif config.FORCE_AI:
+            print("FORCE_AI为True，强制忽略缓存，调用AI。")
 
         # 2. 根据缓存情况决定下一步
         if use_cache:
@@ -81,10 +78,23 @@ class SingleChoiceStrategy(BaseStrategy):
             article_text = await self._get_article_text()
             direction_text = await self._get_direction_text()
             
+            # 精细化提取题目和选项文本
             question_texts = []
             for qw_locator in original_question_locators:
-                question_texts.append(await self._get_full_question_text_for_ai(qw_locator))
-            full_questions_and_options_text = "\n".join(question_texts)
+                title = await qw_locator.locator(".ques-title").text_content()
+                
+                options_text_parts = []
+                option_locators = await qw_locator.locator(".option").all()
+                for opt_loc in option_locators:
+                    caption = await opt_loc.locator(".caption").text_content()
+                    content = await opt_loc.locator(".content").text_content()
+                    options_text_parts.append(f"{caption.strip()}. {content.strip()}")
+                
+                options_text = "\n".join(options_text_parts)
+                full_text = f"{title.strip()}\n{options_text}"
+                question_texts.append(full_text)
+
+            full_questions_and_options_text = "\n\n".join(question_texts)
 
             article_section = f"以下是文章内容:\n{article_text}\n\n" if article_text else ""
             prompt = (
@@ -94,8 +104,15 @@ class SingleChoiceStrategy(BaseStrategy):
                 f"以下是题目和选项:\n{full_questions_and_options_text}"
             )
             
-            print("按回车键继续以调用AI...")
-            await asyncio.to_thread(input)
+            # 新增：在调用AI前，打印并确认Prompt
+            print("=" * 50)
+            print("即将发送给 AI 的完整 Prompt 如下：")
+            print(prompt)
+            print("=" * 50)
+            confirm = await asyncio.to_thread(input, "是否确认发送此 Prompt？[Y/n]: ")
+            if confirm.strip().upper() not in ["Y", ""]:
+                print("用户取消了 AI 调用，终止当前任务。")
+                return
             
             json_data = self.ai_service.get_chat_completion(prompt)
             if not json_data or "questions" not in json_data:

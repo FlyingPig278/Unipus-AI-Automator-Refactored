@@ -35,111 +35,128 @@ class VoiceUploadStrategy(BaseStrategy):
 
    async def execute(self) -> None:
        """
-       循环处理页面上所有语音题。
-       对每个题目执行：生成TTS -> JS注入 -> 模拟点击 -> 等待结果。
+       循环处理页面上所有语音题，并实现带参数的自动重试机制。
        """
        print("=" * 20)
-       print("开始执行语音上传策略 (循环处理 + 无刷新注入模式)...")
+       print("开始执行语音上传策略 (自动重试模式)...")
 
-       # 找到页面上所有语音题的容器
-       question_containers_selector = ".oral-study-sentence" # 这是根据用户HTML分析出的通用容器
+       # 预设的重试参数列表
+       RETRY_PARAMS = [
+           {'length_scale': 1.0, 'noise_scale': 0.2, 'noise_w': 0.2, 'description': "正常语速，低噪声"},
+           {'length_scale': 0.9, 'noise_scale': 0.33, 'noise_w': 0.4, 'description': "稍快语速，中等噪声"},
+           {'length_scale': 1.1, 'noise_scale': 0.1, 'noise_w': 0.1, 'description': "稍慢语速，极低噪声"},
+       ]
+
+       question_containers_selector = ".oral-study-sentence"
        question_containers = await self.driver_service.page.locator(question_containers_selector).all()
        print(f"发现 {len(question_containers)} 个语音题容器。")
+
+       should_abort_page = False
 
        for i, container in enumerate(question_containers):
            print(f"\n--- 开始处理第 {i + 1} 个语音题 ---")
 
-           # 为每个题目独立执行劫持和点击流程
+           last_score = 0
+           succeeded = False
+
            try:
-               # 1. 在当前题目容器内提取需要朗读的文本
                ref_text_locator = container.locator(".sentence-html-container")
                if not await ref_text_locator.is_visible(timeout=5000):
-                   print("警告：在当前容器中找不到朗读文本元素，跳过此题。")
-                   continue
+                   print("错误：在当前容器中找不到朗读文本元素，中止本页面所有语音题。")
+                   should_abort_page = True
+                   break
                ref_text = (await ref_text_locator.text_content()).strip()
                print(f"提取到待朗读文本: '{ref_text}'")
 
-               # 2. 调用AIService生成高质量的WAV音频字节
-               audio_bytes = await self.ai_service.text_to_wav(ref_text)
-               if not audio_bytes:
-                   raise Exception("生成TTS音频失败。")
+               # 开始重试循环
+               for attempt, params in enumerate(RETRY_PARAMS):
+                   print(f"   --- 第 {attempt + 1}/{len(RETRY_PARAMS)}次尝试 ---")
 
-               # 3. 计算音频时长
-               with wave.open(BytesIO(audio_bytes), 'rb') as wf:
-                   frames = wf.getnframes()
-                   rate = wf.getframerate()
-                   duration = frames / float(rate)
-               print(f"生成的音频时长为: {duration:.2f}秒")
+                   try:
+                       audio_bytes = await self.ai_service.text_to_wav(ref_text, **{k:v for k,v in params.items() if k != 'description'})
+                       if not audio_bytes:
+                           print("警告：生成TTS音频失败，跳过本次尝试。")
+                           continue
 
-               # 4. 准备注入的JavaScript劫持脚本
-               audio_b64 = base64.b64encode(audio_bytes).decode('ascii')
-               injection_script = self._get_injection_script(audio_b64)
+                       with wave.open(BytesIO(audio_bytes), 'rb') as wf:
+                           frames = wf.getnframes()
+                           rate = wf.getframerate()
+                           duration = frames / float(rate)
 
-               # 5. 执行无刷新注入
-               print("正在执行无刷新JS注入...")
-               # 每次注入前，先清理一下可能存在的旧劫持
-               await self.driver_service.page.evaluate("""
-                   if (window.originalWebSocket) {
-                       window.WebSocket = window.originalWebSocket;
-                       delete window.originalWebSocket;
-                       delete window.injectedAudioB64;
-                       delete window.ttsAudioSent;
-                       console.log('>>> 历史劫持状态已清理。');
-                   }
-               """)
-               await self.driver_service.page.evaluate(injection_script)
+                       audio_b64 = base64.b64encode(audio_bytes).decode('ascii')
+                       injection_script = self._get_injection_script(audio_b64)
 
+                       await self._cleanup_injection()
+                       await self.driver_service.page.evaluate(injection_script)
 
-               # 6. 在当前题目容器内执行UI模拟
-               record_button_locator = container.locator(".button-record")
-               recording_state_selector = ".button-record svg path[d*='M645.744']" # 停止按钮(方块)的SVG路径
-               score_selector = "span.score_layout"
+                       record_button_locator = container.locator(".button-record")
+                       await record_button_locator.click()
 
-               print("点击录音按钮...")
-               await record_button_locator.click()
+                       recording_state_selector = ".button-record svg path[d*='M645.744']"
+                       await container.locator(recording_state_selector).wait_for(timeout=5000)
 
-               # 确认进入录音状态
-               await container.locator(recording_state_selector).wait_for(timeout=5000)
-               print(f"录音开始，等待{duration:.2f}秒...")
-               await asyncio.sleep(duration + 0.5) # TODO:暂不明确具体应等待多久，只有0.5s可能不够，目前先以duration + 0.5代替
+                       await asyncio.sleep(duration + 0.5)
 
-               print("点击停止按钮...")
-               await record_button_locator.click()
+                       await record_button_locator.click()
 
-               print("等待评分结果出现并填充...")
-               score_element = container.locator(score_selector)
+                       score_element = container.locator("span.score_layout")
+                       await score_element.wait_for(state='visible', timeout=10000)
 
-               # 首先等待元素可见，确保它在DOM中
-               await score_element.wait_for(state='visible', timeout=5000)
+                       await self.driver_service.page.wait_for_function(
+                           """(el) => el && el.textContent && /^\d+$/.test(el.textContent.trim())""",
+                           arg=await score_element.element_handle(),
+                           timeout=20000
+                       )
 
-               # 使用 wait_for_function 等待元素的文本内容被填充为数字
-               # 我们将元素句柄传递给JS函数，确保是当前题目容器内的分数元素
-               await self.driver_service.page.wait_for_function(
-                   """(el) => {
-                       // 确保元素可见且文本内容非空，并且是纯数字
-                       return el && el.textContent && /^\d+$/.test(el.textContent.trim());
-                   }""",
-                   arg=await score_element.element_handle(),  # 将元素句柄传递给JS函数
-                   timeout=20000
-               )
+                       score_str = await score_element.text_content()
+                       last_score = int(score_str)
+                       print(f"   尝试 {attempt + 1} 得分: {last_score} (使用参数: {params['description']})")
 
-               score = await score_element.text_content()
-               print(f"✅ 第 {i + 1} 个语音题完成，页面显示得分: {score}")
+                       if last_score >= 85:
+                           print("✅ 分数 >= 85，判定为优秀，处理下一句。")
+                           succeeded = True
+                           break
+                       if last_score < 60:
+                           print("❌ 分数 < 60，判定为失败，中止整个页面。")
+                           should_abort_page = True
+                           break
+
+                       print(f"   分数 {last_score} 在 60-84 之间，继续尝试以获得更高分数...")
+
+                   except Exception as e:
+                       print(f"   第 {attempt + 1} 次尝试时发生内部错误: {e}")
+                       last_score = 0 # 发生错误时，分数记为0
+                       await asyncio.sleep(1) # 稍作等待
+
+               # 在所有重试结束后进行最终判断
+               if should_abort_page: # 如果在循环内部已经决定中止
+                   break
+
+               if not succeeded and last_score < 80:
+                   print(f"❌ 所有尝试结束后，最终分数 ({last_score}) 仍低于80，中止整个页面。")
+                   should_abort_page = True
+                   break
+               elif not succeeded:
+                    print(f"✅ 所有尝试结束后，最终分数 ({last_score}) 在 80-84 之间，判定为可接受，处理下一句。")
 
            except Exception as e:
-               print(f"处理第 {i + 1} 个语音题时发生错误: {e}")
+               print(f"处理第 {i + 1} 个语音题时发生严重错误: {e}，中止本页面所有语音题。")
+               should_abort_page = True
+               break
            finally:
-               # 每次循环后都清理一下注入的全局变量，避免互相干扰
                await self._cleanup_injection()
 
        print("\n所有语音题处理完毕。")
 
-       confirm = await asyncio.to_thread(input, "AI已选择答案。是否确认提交？[Y/n]: ")
+       if should_abort_page:
+           print("由于发生错误或分数不达标，已中止最终提交。")
+           return
+
+       confirm = await asyncio.to_thread(input, "所有语音题均已完成且分数达标。是否确认提交？[Y/n]: ")
        if confirm.strip().upper() in ["Y", ""]:
            await self.driver_service.page.click(".btn")
            print("答案已提交。正在处理最终确认弹窗...")
            await self.driver_service.handle_submission_confirmation()
-
 
    def _get_injection_script(self, audio_b64: str) -> str:
        """生成用于注入的JavaScript劫持脚本。"""

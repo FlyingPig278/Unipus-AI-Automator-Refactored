@@ -27,7 +27,8 @@ class DriverService:
         print("正在启动Playwright浏览器...")
         self.playwright = await async_playwright().start()
         self.browser = await self.playwright.chromium.launch(headless=headless)
-        context = await self.browser.new_context()
+        # 在创建上下文时直接授予麦克风权限
+        context = await self.browser.new_context(permissions=['microphone'])
         await context.tracing.start(screenshots=True, snapshots=True, sources=True)
         self.page = await context.new_page()
         # self.page = await self.browser.new_page()

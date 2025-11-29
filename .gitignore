@@ -19,3 +19,4 @@ msedgedriver.exe
 /.models/en_US-lessac-medium.onnx
 /.models/en_US-lessac-medium.onnx.json
 /question_types.md
+/.models/
