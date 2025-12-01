@@ -77,6 +77,8 @@ class SingleChoiceStrategy(BaseStrategy):
             # --- AI后备逻辑 ---
             article_text = await self._get_article_text()
             direction_text = await self._get_direction_text()
+            # 新增：提取额外材料
+            additional_material = await self.driver_service._extract_additional_material_for_ai()
             
             # 精细化提取题目和选项文本
             question_texts = []
@@ -96,11 +98,12 @@ class SingleChoiceStrategy(BaseStrategy):
 
             full_questions_and_options_text = "\n\n".join(question_texts)
 
-            article_section = f"以下是文章内容:\n{article_text}\n\n" if article_text else ""
+            article_section = f"以下是文章或听力原文内容:\n{article_text}\n\n" if article_text else ""
             prompt = (
                 f"{prompts.SINGLE_CHOICE_PROMPT}\n"
                 f"以下是题目的说明:\n{direction_text}\n\n"
                 f"{article_section}"
+                f"{additional_material}\n" # 注入额外材料
                 f"以下是题目和选项:\n{full_questions_and_options_text}"
             )
             

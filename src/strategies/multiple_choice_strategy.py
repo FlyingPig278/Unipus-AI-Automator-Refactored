@@ -66,6 +66,7 @@ class MultipleChoiceStrategy(BaseStrategy):
 
             article_text = await self._get_article_text()
             direction_text = await self._get_direction_text()
+            additional_material = await self.driver_service._extract_additional_material_for_ai()
             question_text = await self._get_full_question_text_for_ai(question_locator)
 
             article_section = f"以下是文章内容:\n{article_text}\n\n" if article_text else ""
@@ -73,6 +74,7 @@ class MultipleChoiceStrategy(BaseStrategy):
                 f"{prompts.MULTIPLE_CHOICE_PROMPT}\n"
                 f"以下是题目的说明:\n{direction_text}\n\n"
                 f"{article_section}"
+                f"{additional_material}\n"
                 f"以下是题目和选项:\n{question_text}"
             )
             

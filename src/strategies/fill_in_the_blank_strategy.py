@@ -58,7 +58,11 @@ class FillInTheBlankStrategy(BaseStrategy):
             print("缓存未命中，将调用AI进行解答...")
             cache_write_needed = True
 
+            # 合并多种来源的上下文信息
             article_text = await self._get_article_text()
+            additional_material = await self.driver_service._extract_additional_material_for_ai()
+            full_context = f"{article_text}\n{additional_material}".strip()
+            
             direction_text = await self._get_direction_text()
             
             question_locator = self.driver_service.page.locator(".question-common-abs-reply")
@@ -72,7 +76,7 @@ class FillInTheBlankStrategy(BaseStrategy):
 
             prompt = prompts.FILL_IN_THE_BLANK_PROMPT.format(
                 direction_text=direction_text,
-                article_text=article_text,
+                article_text=full_context,
                 question_text=question_text_for_ai
             )
 

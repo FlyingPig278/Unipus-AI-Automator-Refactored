@@ -1,16 +1,13 @@
 # src/services/driver_service.py
 import asyncio
-import re
-import time
-import os
-from time import sleep
-import base64 # 新增导入
-import json # 新增导入
-import urllib.parse # 新增导入
-from playwright.async_api import async_playwright, Playwright, Browser, Page, expect, Error as PlaywrightError
-from typing import List, Tuple
+import html
+import json  # 新增导入
+import urllib.parse  # 新增导入
+
+from playwright.async_api import async_playwright, Playwright, Browser, Page, Error as PlaywrightError
 
 import src.config as config  # 导入我们的配置
+
 
 class DriverService:
     """服务类，用于封装所有Playwright浏览器操作。"""
@@ -367,3 +364,81 @@ class DriverService:
             print(f"提取正确答案时发生错误: {e}")
             
         return all_answers
+
+    async def _extract_additional_material_for_ai(self) -> str:
+        """
+        从页面中提取额外材料（纯文本或表格），用于补充给AI的Prompt。
+        采用更健壮的、基于Playwright定位器的解析方法。
+        """
+        try:
+            material_container = self.page.locator(
+                ".layout-material-container .question-common-abs-material .text-material-wrapper .component-htmlview")
+            if not await material_container.is_visible(timeout=1000):
+                return ""  # 未找到材料容器，直接返回空
+
+            # 优先尝试定位表格
+            table_locator = material_container.locator("table").first
+            if await table_locator.is_visible():
+                print("检测到表格材料，开始解析为Markdown...")
+
+                # 获取tbody中的所有行（跳过thead）
+                tbody_rows = await table_locator.locator("tbody tr").all()
+                if not tbody_rows:
+                    return ""
+
+                # 第一行是真正的表头（High school, University）
+                header_row = tbody_rows[0]
+                header_cells = await header_row.locator("td").all()
+                headers = []
+                for i, cell in enumerate(header_cells):
+                    text = html.unescape(await cell.text_content()).strip()
+                    # 第一个单元格是角落的空单元格，其他是列标题
+                    if i == 0 and not text:
+                        headers.append(" ")
+                    else:
+                        headers.append(text if text else " ")
+
+                # 构建Markdown表格
+                markdown_table = "\n\n以下是表格内容：\n\n"
+
+                # 表头行
+                markdown_table += f"| {' | '.join(headers)} |\n"
+                markdown_table += f"|{'|'.join([':---:'] * len(headers))}|\n"
+
+                # 数据行（从tbody的第二行开始）
+                for row in tbody_rows[1:]:
+                    row_data = []
+                    cells = await row.locator("td").all()
+
+                    for i, cell in enumerate(cells):
+                        # 检查是否有placeholder
+                        placeholder = cell.locator("span._placeHolder_")
+                        if await placeholder.count() > 0:
+                            data_index = await placeholder.first.get_attribute("data-index")
+                            row_data.append(f"[Blank {data_index}]")
+                        else:
+                            text = html.unescape(await cell.text_content()).strip()
+                            row_data.append(text if text else " ")
+
+                    markdown_table += f"| {' | '.join(row_data)} |\n"
+
+                return markdown_table
+
+            # 如果没有表格，则作为纯文本处理
+            else:
+                print("检测到纯文本文本材料，开始提取...")
+                paragraphs = await material_container.locator("p").all()
+                if not paragraphs:  # 如果没有p标签，就取整个容器的文本
+                    full_text = html.unescape(await material_container.text_content()).strip()
+                else:
+                    lines = [html.unescape(await p.text_content()).strip() for p in paragraphs]
+                    full_text = "\n".join(lines)
+
+                if full_text:
+                    return "\n\n以下是额外文本材料：\n\n" + full_text
+                else:
+                    return ""
+
+        except Exception as e:
+            print(f"警告：提取额外材料时发生错误: {e}")
+            return ""

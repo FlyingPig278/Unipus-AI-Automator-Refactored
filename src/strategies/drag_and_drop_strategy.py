@@ -57,7 +57,11 @@ class DragAndDropStrategy(BaseStrategy):
                 print("缓存未命中，将调用AI进行解答...")
                 cache_write_needed = True
                 
+                # 合并媒体转录和额外材料作为统一的上下文
                 transcript = await self._get_media_transcript()
+                additional_material = await self.driver_service._extract_additional_material_for_ai()
+                full_context = f"{transcript}\n{additional_material}".strip()
+
                 options_locators = await self.driver_service.page.locator("div.sequence-reply-view-item-text").all()
                 options_text_list = [await loc.text_content() for loc in options_locators]
                 options_text_for_ai = "\n".join([f"- {opt.strip()}" for opt in options_text_list])
@@ -65,7 +69,7 @@ class DragAndDropStrategy(BaseStrategy):
                 print(f"提取到 {len(options_text_list)} 个待排序选项。")
 
                 prompt = prompts.DRAG_AND_DROP_PROMPT.format(
-                    media_transcript=transcript,
+                    media_transcript=full_context,
                     options_list=options_text_for_ai
                 )
 

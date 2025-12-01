@@ -37,6 +37,9 @@ class ShortAnswerStrategy(BaseStrategy):
         try:
             # 1. 提取共享上下文
             article_text = await self._get_article_text()
+            additional_material = await self.driver_service._extract_additional_material_for_ai()
+            full_context = f"{article_text}\n{additional_material}".strip()
+            
             direction_text = await self._get_direction_text()
 
             # 2. 提取所有子问题
@@ -50,7 +53,7 @@ class ShortAnswerStrategy(BaseStrategy):
             print(f"提取到 {len(sub_questions)} 个简答题:\n{sub_questions_text}")
 
             # 3. 构建Prompt并调用AI
-            article_section = f"以下是文章或听力原文内容:\n{article_text}\n\n" if article_text else ""
+            article_section = f"以下是文章或听力原文内容:\n{full_context}\n\n" if full_context else ""
             prompt = prompts.SHORT_ANSWER_PROMPT.format(
                 direction_text=direction_text,
                 article_text=article_section,
