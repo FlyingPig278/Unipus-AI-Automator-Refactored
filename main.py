@@ -5,7 +5,7 @@ from src.services.ai_service import AIService
 from src.services.cache_service import CacheService
 from src.strategies.checkbox_strategy import CheckboxStrategy
 from src.strategies.single_choice import SingleChoiceStrategy
-from src.strategies.voice_upload_strategy import VoiceUploadStrategy
+from src.strategies.read_aloud_strategy import ReadAloudStrategy
 from src.strategies.multiple_choice_strategy import MultipleChoiceStrategy
 from src.strategies.discussion_strategy import DiscussionStrategy
 from src.strategies.drag_and_drop_strategy import DragAndDropStrategy
@@ -17,7 +17,7 @@ from src.strategies.short_answer_strategy import ShortAnswerStrategy
 # 策略的顺序很重要，会按照从上到下的顺序进行检查。
 # ==============================================================================
 AVAILABLE_STRATEGIES = [
-    VoiceUploadStrategy,        # 语音上传题
+    ReadAloudStrategy,          # 文字朗读题
     CheckboxStrategy,           # 自检打钩题
     DragAndDropStrategy,        # 拖拽排序题
     FillInTheBlankStrategy,     # 填空题
