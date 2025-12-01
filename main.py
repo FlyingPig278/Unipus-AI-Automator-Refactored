@@ -11,6 +11,7 @@ from src.strategies.discussion_strategy import DiscussionStrategy
 from src.strategies.drag_and_drop_strategy import DragAndDropStrategy
 from src.strategies.fill_in_the_blank_strategy import FillInTheBlankStrategy
 from src.strategies.short_answer_strategy import ShortAnswerStrategy
+from src.strategies.qa_voice_strategy import QAVoiceStrategy
 
 # ==============================================================================
 # 全局可用策略列表
@@ -18,6 +19,7 @@ from src.strategies.short_answer_strategy import ShortAnswerStrategy
 # ==============================================================================
 AVAILABLE_STRATEGIES = [
     ReadAloudStrategy,          # 文字朗读题
+    QAVoiceStrategy,            # 语音简答题
     CheckboxStrategy,           # 自检打钩题
     DragAndDropStrategy,        # 拖拽排序题
     FillInTheBlankStrategy,     # 填空题

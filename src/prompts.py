@@ -139,3 +139,24 @@ JSON格式如下:
 【子问题列表】:
 {sub_questions}
 """
+
+QAVOICE_PROMPT = """
+你是一个用于解答U校园语音简答题的AI助手。你的任务是根据所有提供的上下文信息（包括题目说明、文章或听力原文、额外材料等），为以下问题提供一个简洁、直接的英文口语化回答。
+你的回答必须严格遵循以下JSON格式，只包含一个 "answer" 字段：
+{{
+  "answer": "Your concise, spoken English answer here."
+}}
+
+---
+【题目说明】:
+{direction_text}
+
+【文章或听力原文内容】:
+{article_text}
+
+【额外材料】:
+{additional_material}
+
+---
+问题: {question_text}
+"""

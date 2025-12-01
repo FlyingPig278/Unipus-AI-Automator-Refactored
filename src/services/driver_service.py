@@ -367,78 +367,196 @@ class DriverService:
 
     async def _extract_additional_material_for_ai(self) -> str:
         """
-        从页面中提取额外材料（纯文本或表格），用于补充给AI的Prompt。
-        采用更健壮的、基于Playwright定位器的解析方法。
+        从页面中提取所有额外材料（纯文本或表格），用于补充给AI的Prompt。
+        采用更健णुओं的、基于Playwright定位器的解析方法。
         """
-        try:
-            material_container = self.page.locator(
-                ".layout-material-container .question-common-abs-material .text-material-wrapper .component-htmlview")
-            if not await material_container.is_visible(timeout=1000):
-                return ""  # 未找到材料容器，直接返回空
-
-            # 优先尝试定位表格
-            table_locator = material_container.locator("table").first
-            if await table_locator.is_visible():
-                print("检测到表格材料，开始解析为Markdown...")
-
-                # 获取tbody中的所有行（跳过thead）
-                tbody_rows = await table_locator.locator("tbody tr").all()
-                if not tbody_rows:
-                    return ""
-
-                # 第一行是真正的表头（High school, University）
-                header_row = tbody_rows[0]
-                header_cells = await header_row.locator("td").all()
-                headers = []
-                for i, cell in enumerate(header_cells):
-                    text = html.unescape(await cell.text_content()).strip()
-                    # 第一个单元格是角落的空单元格，其他是列标题
-                    if i == 0 and not text:
-                        headers.append(" ")
-                    else:
-                        headers.append(text if text else " ")
-
-                # 构建Markdown表格
-                markdown_table = "\n\n以下是表格内容：\n\n"
-
-                # 表头行
-                markdown_table += f"| {' | '.join(headers)} |\n"
-                markdown_table += f"|{'|'.join([':---:'] * len(headers))}|\n"
-
-                # 数据行（从tbody的第二行开始）
-                for row in tbody_rows[1:]:
-                    row_data = []
-                    cells = await row.locator("td").all()
-
-                    for i, cell in enumerate(cells):
-                        # 检查是否有placeholder
-                        placeholder = cell.locator("span._placeHolder_")
-                        if await placeholder.count() > 0:
-                            data_index = await placeholder.first.get_attribute("data-index")
-                            row_data.append(f"[Blank {data_index}]")
-                        else:
-                            text = html.unescape(await cell.text_content()).strip()
-                            row_data.append(text if text else " ")
-
-                    markdown_table += f"| {' | '.join(row_data)} |\n"
-
-                return markdown_table
-
-            # 如果没有表格，则作为纯文本处理
-            else:
-                print("检测到纯文本文本材料，开始提取...")
-                paragraphs = await material_container.locator("p").all()
-                if not paragraphs:  # 如果没有p标签，就取整个容器的文本
-                    full_text = html.unescape(await material_container.text_content()).strip()
-                else:
-                    lines = [html.unescape(await p.text_content()).strip() for p in paragraphs]
-                    full_text = "\n".join(lines)
-
-                if full_text:
-                    return "\n\n以下是额外文本材料：\n\n" + full_text
-                else:
-                    return ""
-
-        except Exception as e:
-            print(f"警告：提取额外材料时发生错误: {e}")
+        all_extracted_materials = []
+        material_containers = await self.page.locator(
+            ".layout-material-container .question-common-abs-material .text-material-wrapper .component-htmlview"
+        ).all()
+    
+        if not material_containers:
             return ""
+    
+        for i, material_container in enumerate(material_containers):
+            try:
+                if not await material_container.is_visible(timeout=500):
+                    continue
+    
+                # 优先尝试定位表格
+                table_locator = material_container.locator("table").first
+                if await table_locator.is_visible():
+                    print(f"检测到第 {i+1} 个材料容器包含表格，开始解析为Markdown...")
+                    markdown_table = "\n\n以下是表格内容：\n\n"
+    
+                    # 获取所有行
+                    all_rows = await table_locator.locator("tr").all()
+                    if not all_rows:
+                        continue
+                    
+                    # 智能判断表头位置
+                    header_row_index = 0
+                    
+                    # 方法1: 检查是否有thead
+                    thead_rows = await table_locator.locator("thead tr").all()
+                    if thead_rows:
+                        # 如果thead有内容，使用thead第一行
+                        header_row = thead_rows[0]
+                        # 检查thead行是否真的有内容
+                        header_cells = await header_row.locator("th, td").all()
+                        has_content = False
+                        for cell in header_cells:
+                            text = html.unescape(await cell.text_content()).strip()
+                            if text and text != "&nbsp;":
+                                has_content = True
+                                break
+                        
+                        if has_content:
+                            # thead有内容，使用thead行作为表头
+                            header_cells = await header_row.locator("th, td").all()
+                            headers = []
+                            for cell in header_cells:
+                                text = html.unescape(await cell.text_content()).strip()
+                                headers.append(text if text and text != "&nbsp;" else " ")
+                            
+                            # 数据行从tbody开始
+                            data_rows = await table_locator.locator("tbody tr").all()
+                            if not data_rows:
+                                # 如果没有tbody，则使用thead之后的所有行
+                                data_rows = all_rows[1:]
+                        else:
+                            # thead没有实际内容，尝试在tbody中找表头
+                            tbody_rows = await table_locator.locator("tbody tr").all()
+                            if tbody_rows:
+                                header_row = tbody_rows[0]
+                                header_cells = await header_row.locator("th, td").all()
+                                headers = []
+                                for cell in header_cells:
+                                    text = html.unescape(await cell.text_content()).strip()
+                                    headers.append(text if text and text != "&nbsp;" else " ")
+                                
+                                data_rows = tbody_rows[1:] if len(tbody_rows) > 1 else []
+                            else:
+                                # 如果没有tbody，尝试使用第一行
+                                header_row = all_rows[0]
+                                header_cells = await header_row.locator("th, td").all()
+                                headers = []
+                                for cell in header_cells:
+                                    text = html.unescape(await cell.text_content()).strip()
+                                    headers.append(text if text and text != "&nbsp;" else " ")
+                                
+                                data_rows = all_rows[1:]
+                    else:
+                        # 没有thead，尝试在tbody中找表头
+                        tbody_rows = await table_locator.locator("tbody tr").all()
+                        if tbody_rows:
+                            # 检查tbody第一行是否有内容
+                            first_row_cells = await tbody_rows[0].locator("th, td").all()
+                            has_content = False
+                            for cell in first_row_cells:
+                                text = html.unescape(await cell.text_content()).strip()
+                                if text and text != "&nbsp;":
+                                    has_content = True
+                                    break
+                            
+                            if has_content:
+                                # tbody第一行有内容，作为表头
+                                header_row = tbody_rows[0]
+                                header_cells = await header_row.locator("th, td").all()
+                                headers = []
+                                for cell in header_cells:
+                                    text = html.unescape(await cell.text_content()).strip()
+                                    headers.append(text if text and text != "&nbsp;" else " ")
+                                
+                                data_rows = tbody_rows[1:]
+                            else:
+                                # tbody第一行是空的，尝试使用第二行
+                                if len(tbody_rows) > 1:
+                                    header_row = tbody_rows[1]
+                                    header_cells = await header_row.locator("th, td").all()
+                                    headers = []
+                                    for cell in header_cells:
+                                        text = html.unescape(await cell.text_content()).strip()
+                                        headers.append(text if text and text != "&nbsp;" else " ")
+                                    
+                                    data_rows = tbody_rows[2:]
+                                else:
+                                    # 只有一行，且是空的，使用默认表头
+                                    header_cells = await tbody_rows[0].locator("th, td").all()
+                                    headers = [f"列{i+1}" for i in range(len(header_cells))]
+                                    data_rows = []
+                        else:
+                            # 没有tbody，使用所有行
+                            # 检查第一行是否有内容
+                            first_row_cells = await all_rows[0].locator("th, td").all()
+                            has_content = False
+                            for cell in first_row_cells:
+                                text = html.unescape(await cell.text_content()).strip()
+                                if text and text != "&nbsp;":
+                                    has_content = True
+                                    break
+                            
+                            if has_content:
+                                # 第一行有内容，作为表头
+                                header_row = all_rows[0]
+                                header_cells = await header_row.locator("th, td").all()
+                                headers = []
+                                for cell in header_cells:
+                                    text = html.unescape(await cell.text_content()).strip()
+                                    headers.append(text if text and text != "&nbsp;" else " ")
+                                
+                                data_rows = all_rows[1:]
+                            else:
+                                # 第一行是空的，尝试使用第二行
+                                if len(all_rows) > 1:
+                                    header_row = all_rows[1]
+                                    header_cells = await header_row.locator("th, td").all()
+                                    headers = []
+                                    for cell in header_cells:
+                                        text = html.unescape(await cell.text_content()).strip()
+                                        headers.append(text if text and text != "&nbsp;" else " ")
+                                    
+                                    data_rows = all_rows[2:]
+                                else:
+                                    # 只有一行，且是空的，使用默认表头
+                                    header_cells = await all_rows[0].locator("th, td").all()
+                                    headers = [f"列{i+1}" for i in range(len(header_cells))]
+                                    data_rows = []
+    
+                    # 构建Markdown表格
+                    markdown_table += f"| {' | '.join(headers)} |\n"
+                    markdown_table += f"|{'|'.join([':---:'] * len(headers))}|\n"
+    
+                    # 处理数据行
+                    for row in data_rows:
+                        row_data = []
+                        cells = await row.locator("td, th").all()
+                        for cell in cells:
+                            placeholder = cell.locator("span._placeHolder_")
+                            if await placeholder.count() > 0:
+                                data_index = await placeholder.first.get_attribute("data-index")
+                                row_data.append(f"[Blank {data_index}]")
+                            else:
+                                text = html.unescape(await cell.text_content()).strip()
+                                row_data.append(text if text and text != "&nbsp;" else " ")
+                        markdown_table += f"| {' | '.join(row_data)} |\n"
+                    
+                    all_extracted_materials.append(markdown_table)
+    
+                # 如果没有表格，则作为纯文本处理
+                else:
+                    print(f"检测到第 {i+1} 个材料容器包含纯文本文本，开始提取...")
+                    paragraphs = await material_container.locator("p").all()
+                    if not paragraphs:
+                        full_text = html.unescape(await material_container.text_content()).strip()
+                    else:
+                        lines = [html.unescape(await p.text_content()).strip() for p in paragraphs]
+                        full_text = "\n".join(lines)
+                    
+                    if full_text:
+                        all_extracted_materials.append("\n\n以下是额外文本材料：\n\n" + full_text)
+    
+            except Exception as e:
+                print(f"警告：提取第 {i+1} 个额外材料时发生错误: {e}")
+                
+        return "\n\n".join(all_extracted_materials)

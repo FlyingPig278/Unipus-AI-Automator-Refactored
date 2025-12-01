@@ -14,6 +14,13 @@ class ReadAloudStrategy(BaseVoiceStrategy):
     处理文字朗读类语音题的策略。
     """
 
+    # 预设的重试参数列表，特定于朗读长句
+    RETRY_PARAMS = [
+        {'length_scale': 1.0, 'noise_scale': 0.2, 'noise_w': 0.2, 'description': "正常语速，低噪声"},
+        {'length_scale': 0.9, 'noise_scale': 0.33, 'noise_w': 0.4, 'description': "稍快语速，中等噪声"},
+        {'length_scale': 1.1, 'noise_scale': 0.1, 'noise_w': 0.1, 'description': "稍慢语速，极低噪声"},
+    ]
+
     def __init__(self, driver_service: DriverService, ai_service: AIService, cache_service: CacheService):
         super().__init__(driver_service, ai_service, cache_service)
         self.strategy_type = "read_aloud"
@@ -42,13 +49,6 @@ class ReadAloudStrategy(BaseVoiceStrategy):
         """
         print("=" * 20)
         print("开始执行文字朗读策略...")
-
-        # 预设的重试参数列表，特定于朗读长句
-        self.RETRY_PARAMS = [
-            {'length_scale': 1.0, 'noise_scale': 0.2, 'noise_w': 0.2, 'description': "正常语速，低噪声"},
-            {'length_scale': 0.9, 'noise_scale': 0.33, 'noise_w': 0.4, 'description': "稍快语速，中等噪声"},
-            {'length_scale': 1.1, 'noise_scale': 0.1, 'noise_w': 0.1, 'description': "稍慢语速，极低噪声"},
-        ]
 
         question_containers_selector = ".oral-study-sentence"
         question_containers = await self.driver_service.page.locator(question_containers_selector).all()
