@@ -30,19 +30,97 @@ AVAILABLE_STRATEGIES = [
 ]
 
 async def run_strategy_on_current_page(browser_service: DriverService, ai_service: AIService, cache_service: CacheService):
-   """在当前页面上尝试匹配并执行一个解题策略。"""
-   current_strategy = None
-   for StrategyClass in AVAILABLE_STRATEGIES:
-       # check方法也需要是异步的，如果它内部包含Playwright的调用
-       if await StrategyClass.check(browser_service):
-           current_strategy = StrategyClass(browser_service, ai_service, cache_service)
-           print(f"匹配到策略: {StrategyClass.__name__}")
-           break
+    """
+    在当前页面上智能执行解题策略。
+    能够区分简单任务、"题中题"任务，并能优雅地处理无按钮的纯信息页面。
+    """
+    try:
+        btn_text = ""
+        try:
+            # 使用更精确的选择器，只寻找我们关心的“提交”或“下一题”按钮
+            action_btn = browser_service.page.locator(".btn:has-text('下一题'), .btn:has-text('提 交')").first
+            await action_btn.wait_for(state="visible", timeout=3000)
+            btn_text = await action_btn.text_content()
+        except Exception:
+            # 捕获超时等错误，意味着页面上很可能没有我们关心的按钮
+            print("在页面上未找到‘提交’或‘下一题’按钮。")
 
-   if current_strategy:
-       await current_strategy.execute()
-   else:
-       print("在当前页面未找到适合的策略。")
+        # 模式一：简单任务（直接提交）
+        if "提 交" in btn_text:
+            print("检测到“提交”按钮，执行单页策略...")
+            current_strategy = None
+            for StrategyClass in AVAILABLE_STRATEGIES:
+                if await StrategyClass.check(browser_service):
+                    current_strategy = StrategyClass(browser_service, ai_service, cache_service)
+                    print(f"匹配到策略: {StrategyClass.__name__}")
+                    break
+            
+            if current_strategy:
+                # 正常执行，策略自己负责缓存和提交
+                await current_strategy.execute(is_chained_task=False)
+            else:
+                print("在当前页面未找到适合的策略。")
+            
+        # 模式二：“题中题”任务（“下一题”循环）
+        elif "下一题" in btn_text:
+            print("检测到“下一题”按钮，启动“题中题”循环模式（缓存已禁用）。")
+            shared_context = ""
+            
+            while True:
+                current_strategy = None
+                for StrategyClass in AVAILABLE_STRATEGIES:
+                    if await StrategyClass.check(browser_service):
+                        current_strategy = StrategyClass(browser_service, ai_service, cache_service)
+                        print(f"匹配到子题策略: {StrategyClass.__name__}")
+                        break
+                
+                if current_strategy:
+                    await current_strategy.execute(shared_context=shared_context, is_chained_task=True)
+                else:
+                    print("当前子题未匹配到任何策略，尝试提取材料作为共享上下文...")
+                    material = await browser_service._extract_additional_material_for_ai()
+                    if material:
+                        print("已提取到共享材料。")
+                        shared_context += f"\n{material}"
+
+                # 再次使用精确选择器定位操作按钮
+                action_btn_loop = browser_service.page.locator(".btn:has-text('下一题'), .btn:has-text('提 交')").first
+                await action_btn_loop.wait_for(state="visible", timeout=10000)
+                current_btn_text = await action_btn_loop.text_content()
+
+                if "下一题" in current_btn_text:
+                    print("点击“下一题”，进入下一个子题...")
+                    await action_btn_loop.click()
+                    await asyncio.sleep(1) 
+                    await browser_service.handle_common_popups()
+                elif "提 交" in current_btn_text:
+                    print("检测到最终“提交”按钮，正在提交任务...")
+                    await action_btn_loop.click()
+                    await browser_service.handle_submission_confirmation()
+                    print("“题中题”任务完成。")
+                    break
+                else:
+                    print(f"检测到未知按钮文本 '{current_btn_text}'，循环终止。")
+                    break
+        
+        # 模式三：无按钮页面
+        else:
+            print("此页面无提交或下一题按钮，将检查是否有适用的无操作策略...")
+            current_strategy = None
+            for StrategyClass in AVAILABLE_STRATEGIES:
+                if await StrategyClass.check(browser_service):
+                    current_strategy = StrategyClass(browser_service, ai_service, cache_service)
+                    print(f"匹配到策略: {StrategyClass.__name__}")
+                    break
+            
+            if current_strategy:
+                # 假设此策略执行后不需要提交
+                await current_strategy.execute(is_chained_task=True) 
+            else:
+                print("未找到任何适用策略，此页面可能为纯信息页。继续下一个任务。")
+
+    except Exception as e:
+        print(f"执行策略期间发生错误: {e}")
 
 async def run_auto_mode(browser_service: DriverService, ai_service: AIService, cache_service: CacheService):
    """运行全自动答题模式。"""

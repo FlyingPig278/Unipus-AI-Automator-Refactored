@@ -47,7 +47,7 @@ class QAVoiceStrategy(BaseVoiceStrategy):
             return False
         return False
 
-    async def execute(self) -> None:
+    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> None:
         """
         执行语音简答题的回答流程。
         包含一个特殊逻辑：如果检测到题目指示需要前文，则会自动导航到Activity 1获取文章，然后再返回作答。
@@ -123,9 +123,12 @@ class QAVoiceStrategy(BaseVoiceStrategy):
                 question_text = (await question_locator.text_content()).strip()
                 print(f"提取到问题文本: '{question_text}'")
 
+                # 将共享上下文和本地上下文结合
+                combined_context = f"{shared_context}\n{article_text}"
+
                 prompt = prompts.QAVOICE_PROMPT.format(
                     direction_text=direction_text,
-                    article_text=article_text,
+                    article_text=combined_context,
                     additional_material=additional_material,
                     question_text=question_text
                 )
@@ -173,11 +176,13 @@ class QAVoiceStrategy(BaseVoiceStrategy):
             print("由于发生错误或分数不达标，已中止最终提交。")
             return
 
-        confirm = await asyncio.to_thread(input, "所有语音简答题均已完成且分数达标。是否确认提交？[Y/n]: ")
-        if confirm.strip().upper() in ["Y", ""]:
-            await self.driver_service.page.click(".btn")
-            print("答案已提交。正在处理最终确认弹窗...")
-            await self.driver_service.handle_submission_confirmation()
+        # 如果不是“题中题”的一部分，则执行提交流程
+        if not is_chained_task:
+            confirm = await asyncio.to_thread(input, "所有语音简答题均已完成且分数达标。是否确认提交？[Y/n]: ")
+            if confirm.strip().upper() in ["Y", ""]:
+                await self.driver_service.page.click(".btn")
+                print("答案已提交。正在处理最终确认弹窗...")
+                await self.driver_service.handle_submission_confirmation()
 
     async def _get_article_text(self) -> str:
         """提取文章或听力原文（音频或视频）。"""

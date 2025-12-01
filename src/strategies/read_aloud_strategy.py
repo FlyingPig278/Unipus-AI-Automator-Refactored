@@ -42,7 +42,7 @@ class ReadAloudStrategy(BaseVoiceStrategy):
             return False
         return False
 
-    async def execute(self) -> None:
+    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> None:
         """
         循环处理页面上所有文字朗读题。
         核心的重试和评分逻辑由 BaseVoiceStrategy._execute_single_voice_task 处理。
@@ -91,8 +91,10 @@ class ReadAloudStrategy(BaseVoiceStrategy):
             print("由于发生错误或分数不达标，已中止最终提交。")
             return
 
-        confirm = await asyncio.to_thread(input, "所有语音题均已完成且分数达标。是否确认提交？[Y/n]: ")
-        if confirm.strip().upper() in ["Y", ""]:
-            await self.driver_service.page.click(".btn")
-            print("答案已提交。正在处理最终确认弹窗...")
-            await self.driver_service.handle_submission_confirmation()
+        # 如果不是“题中题”的一部分，则执行提交流程
+        if not is_chained_task:
+            confirm = await asyncio.to_thread(input, "所有语音题均已完成且分数达标。是否确认提交？[Y/n]: ")
+            if confirm.strip().upper() in ["Y", ""]:
+                await self.driver_service.page.click(".btn")
+                print("答案已提交。正在处理最终确认弹窗...")
+                await self.driver_service.handle_submission_confirmation()

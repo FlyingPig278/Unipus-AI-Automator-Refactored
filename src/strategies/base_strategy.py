@@ -26,7 +26,7 @@ class BaseStrategy(ABC):
         pass
 
     @abstractmethod
-    def execute(self) -> None:
+    def execute(self, shared_context: str = "", is_chained_task: bool = False) -> None:
         """
         执行本策略的核心逻辑，包括：
         1. 从页面提取题目信息。
