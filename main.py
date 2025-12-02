@@ -75,7 +75,11 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
                         break
                 
                 if current_strategy:
-                    await current_strategy.execute(shared_context=shared_context, is_chained_task=True)
+                    try:
+                        await current_strategy.execute(shared_context=shared_context, is_chained_task=True)
+                    except Exception as e:
+                        print(f"策略 {current_strategy.__class__.__name__} 执行时发生错误，终止当前任务链: {e}")
+                        break # 发生错误，立即终止循环
                 else:
                     print("当前子题未匹配到任何策略，尝试提取材料作为共享上下文...")
                     material = await browser_service._extract_additional_material_for_ai()

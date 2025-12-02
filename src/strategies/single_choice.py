@@ -1,4 +1,6 @@
 import asyncio
+import re
+import html
 from playwright.async_api import Error as PlaywrightError
 
 from src import prompts, config
@@ -82,6 +84,7 @@ class SingleChoiceStrategy(BaseStrategy):
             direction_text = await self._get_direction_text()
             additional_material = await self.driver_service._extract_additional_material_for_ai()
             
+            # 精细化提取题目和选项文本
             question_texts = []
             for qw_locator in original_question_locators:
                 title = await qw_locator.locator(".ques-title").text_content()
@@ -90,8 +93,16 @@ class SingleChoiceStrategy(BaseStrategy):
                 option_locators = await qw_locator.locator(".option").all()
                 for opt_loc in option_locators:
                     caption = await opt_loc.locator(".caption").text_content()
-                    content = await opt_loc.locator(".content").text_content()
-                    options_text_parts.append(f"{caption.strip()}. {content.strip()}")
+                    # 获取innerHTML并处理下划线
+                    content_html = await opt_loc.locator(".content").inner_html()
+                    processed_content = re.sub(r'<span style="text-decoration: underline;">(.*?)</span>', r'*\1*', content_html, flags=re.IGNORECASE | re.DOTALL)
+                    processed_content = re.sub(r'<u>(.*?)</u>', r'*\1*', processed_content, flags=re.IGNORECASE | re.DOTALL)
+                    # 剥离所有剩余HTML标签
+                    processed_content = re.sub(r'<.*?>', '', processed_content)
+                    # 解码HTML实体
+                    processed_content = html.unescape(processed_content)
+                    
+                    options_text_parts.append(f"{caption.strip()}. {processed_content.strip()}")
                 
                 options_text = "\n".join(options_text_parts)
                 full_text = f"{title.strip()}\n{options_text}"
@@ -107,7 +118,7 @@ class SingleChoiceStrategy(BaseStrategy):
                 f"{prompts.SINGLE_CHOICE_PROMPT}\n"
                 f"以下是题目的说明:\n{direction_text}\n\n"
                 f"{article_section}"
-                f"{additional_material}\n"
+                f"{additional_material}\n" # 注入额外材料
                 f"以下是题目和选项:\n{full_questions_and_options_text}"
             )
             
@@ -221,3 +232,4 @@ class SingleChoiceStrategy(BaseStrategy):
 
         except Exception as e:
             print(f"写入缓存过程中发生错误: {e}")
+

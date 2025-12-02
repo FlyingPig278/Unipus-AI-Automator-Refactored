@@ -35,8 +35,8 @@ class MultipleChoiceStrategy(BaseStrategy):
         """从题目区块中提取完整的题目和选项文本。"""
         return await question_wrap_locator.text_content()
 
-    async def execute(self) -> None:
-        """执行多选题的解题逻辑。"""
+    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> None:
+        """执行多选题的解题逻辑，根据is_chained_task标志决定是否使用缓存。"""
         print("="*20)
         print("开始执行多选题策略...")
 
@@ -52,24 +52,36 @@ class MultipleChoiceStrategy(BaseStrategy):
 
         cache_write_needed = False
         answers_to_fill = [] # 这将是一个 list[str]，例如 ['A', 'C']
+        use_cache = False
 
-        task_page_cache = self.cache_service.get_task_page_cache(breadcrumb_parts)
-        if not config.FORCE_AI and task_page_cache and task_page_cache.get('type') == self.strategy_type:
-            print("在缓存中找到此页面的答案。")
-            answers_to_fill = task_page_cache.get('answers', [])
-        elif config.FORCE_AI and task_page_cache:
-            print("FORCE_AI为True，强制忽略缓存，调用AI。")
+        # 1. 检查缓存（仅当不是“题中题”模式时）
+        if not is_chained_task:
+            task_page_cache = self.cache_service.get_task_page_cache(breadcrumb_parts)
+            if not config.FORCE_AI and task_page_cache and task_page_cache.get('type') == self.strategy_type and task_page_cache.get('answers'):
+                print("在缓存中找到此页面的答案。")
+                target_order = task_page_cache['answers']
+                use_cache = True
+            elif config.FORCE_AI and task_page_cache:
+                print("FORCE_AI为True，强制忽略缓存，调用AI。")
         
+        # 2. 如果缓存未命中，则调用AI
         if not answers_to_fill:
-            print("缓存未命中，将调用AI进行解答...")
-            cache_write_needed = True
+            if is_chained_task:
+                print("处于“题中题”模式，跳过缓存，直接调用AI。")
+            else:
+                print("缓存未命中，将调用AI进行解答...")
+            
+            cache_write_needed = not is_chained_task # 只有在非题中题模式下才写真正的缓存
 
             article_text = await self._get_article_text()
             direction_text = await self._get_direction_text()
             additional_material = await self.driver_service._extract_additional_material_for_ai()
             question_text = await self._get_full_question_text_for_ai(question_locator)
 
-            article_section = f"以下是文章内容:\n{article_text}\n\n" if article_text else ""
+            # 将共享上下文和本地上下文结合
+            combined_context = f"{shared_context}\n{article_text}"
+
+            article_section = f"以下是文章内容:\n{combined_context}\n\n" if combined_context.strip() else ""
             prompt = (
                 f"{prompts.MULTIPLE_CHOICE_PROMPT}\n"
                 f"以下是题目的说明:\n{direction_text}\n\n"
@@ -96,7 +108,7 @@ class MultipleChoiceStrategy(BaseStrategy):
             # AI为单个题目返回一个答案列表
             answers_to_fill = [str(char).upper() for char in json_data["questions"][0].get("answer", [])]
 
-        await self._fill_and_submit(answers_to_fill, cache_write_needed, breadcrumb_parts)
+        await self._fill_and_submit(answers_to_fill, cache_write_needed, breadcrumb_parts, is_chained_task=is_chained_task)
 
     async def _get_article_text(self) -> str:
         """提取文章或听力原文（音频或视频）。"""
@@ -122,8 +134,8 @@ class MultipleChoiceStrategy(BaseStrategy):
             print("未找到题目说明（Direction）。")
             return ""
 
-    async def _fill_and_submit(self, answers: list[str], cache_write_needed: bool, breadcrumb_parts: list[str]):
-        """将答案填入网页并提交。"""
+    async def _fill_and_submit(self, answers: list[str], cache_write_needed: bool, breadcrumb_parts: list[str], is_chained_task: bool = False):
+        """将答案填入网页。如果不是“题中题”模式，则同时处理提交。"""
         try:
             print("正在解析并预验证答案...")
             # 只有一个题目，所以直接定位它的option-wrap
@@ -146,16 +158,19 @@ class MultipleChoiceStrategy(BaseStrategy):
 
             print("答案填写完毕。")
 
-            confirm = await asyncio.to_thread(input, "AI或缓存已选择答案。是否确认提交？[Y/n]: ")
-            if confirm.strip().upper() in ["Y", ""]:
-                await self.driver_service.page.click(".btn")
-                print("答案已提交。正在处理最终确认弹窗...")
-                await self.driver_service.handle_submission_confirmation()
-                if cache_write_needed:
-                    print("准备从解析页面提取正确答案并写入缓存...")
-                    await self._write_answers_to_cache(breadcrumb_parts)
-            else:
-                print("用户取消提交。")
+            # 4. 提交答案 (仅当不是“题中题”模式时)
+            if not is_chained_task:
+                confirm = await asyncio.to_thread(input, "AI或缓存已更新答案顺序。是否确认提交？[Y/n]: ")
+                if confirm.strip().upper() in ["Y", ""]:
+                    await self.driver_service.page.click(".btn")
+                    print("答案已提交。正在处理最终确认弹窗...")
+                    await self.driver_service.handle_submission_confirmation()
+
+                    if cache_write_needed:
+                        print("准备从解析页面提取正确答案并写入缓存...")
+                        await self._write_answers_to_cache(breadcrumb_parts)
+                else:
+                    print("用户取消提交。")
 
         except Exception as e:
             print(f"填写或提交答案时出错: {e}")

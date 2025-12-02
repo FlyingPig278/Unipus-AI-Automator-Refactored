@@ -30,8 +30,8 @@ class DragAndDropStrategy(BaseStrategy):
             return False
         return False
 
-    async def execute(self) -> None:
-        """执行拖拽题的JS函数调用逻辑，优先使用缓存。"""
+    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> None:
+        """执行拖拽题的JS函数调用逻辑，根据is_chained_task标志决定是否使用缓存。"""
         print("=" * 20)
         print("开始执行拖拽题策略 (JS函数调用模式)...")
 
@@ -42,25 +42,33 @@ class DragAndDropStrategy(BaseStrategy):
 
             cache_write_needed = False
             target_order = []
+            use_cache = False
 
-            # 1. 检查缓存
-            task_page_cache = self.cache_service.get_task_page_cache(breadcrumb_parts)
-            # 增加FORCE_AI判断
-            if not config.FORCE_AI and task_page_cache and task_page_cache.get('type') == self.strategy_type and task_page_cache.get('answers'):
-                print("在缓存中找到此页面的答案。")
-                target_order = task_page_cache['answers']
-            elif config.FORCE_AI and task_page_cache:
-                print("FORCE_AI为True，强制忽略缓存，调用AI。")
+            # 1. 检查缓存（仅当不是“题中题”模式时）
+            if not is_chained_task:
+                task_page_cache = self.cache_service.get_task_page_cache(breadcrumb_parts)
+                if not config.FORCE_AI and task_page_cache and task_page_cache.get('type') == self.strategy_type and task_page_cache.get('answers'):
+                    print("在缓存中找到此页面的答案。")
+                    target_order = task_page_cache['answers']
+                    use_cache = True
+                elif config.FORCE_AI and task_page_cache:
+                    print("FORCE_AI为True，强制忽略缓存，调用AI。")
             
             # 2. 如果缓存未命中，则调用AI
             if not target_order:
-                print("缓存未命中，将调用AI进行解答...")
-                cache_write_needed = True
+                if is_chained_task:
+                    print("处于“题中题”模式，跳过缓存，直接调用AI。")
+                else:
+                    print("缓存未命中，将调用AI进行解答...")
+                
+                cache_write_needed = not is_chained_task # 只有在非题中题模式下才写真正的缓存
                 
                 # 合并媒体转录和额外材料作为统一的上下文
                 transcript = await self._get_media_transcript()
                 additional_material = await self.driver_service._extract_additional_material_for_ai()
-                full_context = f"{transcript}\n{additional_material}".strip()
+                
+                # 将共享上下文和本地上下文结合
+                full_context = f"{shared_context}\n{transcript}\n{additional_material}".strip()
 
                 options_locators = await self.driver_service.page.locator("div.sequence-reply-view-item-text").all()
                 options_text_list = [await loc.text_content() for loc in options_locators]
@@ -96,18 +104,19 @@ class DragAndDropStrategy(BaseStrategy):
             await self.driver_service.page.evaluate(js_code)
             print("JS代码执行完毕，UI应已更新。")
 
-            # 4. 提交答案
-            confirm = await asyncio.to_thread(input, "AI或缓存已更新答案顺序。是否确认提交？[Y/n]: ")
-            if confirm.strip().upper() in ["Y", ""]:
-                await self.driver_service.page.click(".btn")
-                print("答案已提交。正在处理最终确认弹窗...")
-                await self.driver_service.handle_submission_confirmation()
+            # 4. 提交答案 (仅当不是“题中题”模式时)
+            if not is_chained_task:
+                confirm = await asyncio.to_thread(input, "AI或缓存已更新答案顺序。是否确认提交？[Y/n]: ")
+                if confirm.strip().upper() in ["Y", ""]:
+                    await self.driver_service.page.click(".btn")
+                    print("答案已提交。正在处理最终确认弹窗...")
+                    await self.driver_service.handle_submission_confirmation()
 
-                if cache_write_needed:
-                    print("准备从解析页面提取正确答案并写入缓存...")
-                    await self._write_answers_to_cache(breadcrumb_parts)
-            else:
-                print("用户取消提交。")
+                    if cache_write_needed:
+                        print("准备从解析页面提取正确答案并写入缓存...")
+                        await self._write_answers_to_cache(breadcrumb_parts)
+                else:
+                    print("用户取消提交。")
 
         except Exception as e:
             print(f"执行拖拽题策略时发生错误: {e}")

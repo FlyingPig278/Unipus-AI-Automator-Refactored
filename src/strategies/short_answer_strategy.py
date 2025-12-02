@@ -28,7 +28,7 @@ class ShortAnswerStrategy(BaseStrategy):
             return False
         return False
 
-    async def execute(self) -> None:
+    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> None:
         """执行简答题的解题逻辑。"""
         print("="*20)
         print("开始执行简答题策略...")
@@ -38,7 +38,9 @@ class ShortAnswerStrategy(BaseStrategy):
             # 1. 提取共享上下文
             article_text = await self._get_article_text()
             additional_material = await self.driver_service._extract_additional_material_for_ai()
-            full_context = f"{article_text}\n{additional_material}".strip()
+            
+            # 将共享上下文和本地上下文结合
+            full_context = f"{shared_context}\n{article_text}\n{additional_material}".strip()
             
             direction_text = await self._get_direction_text()
 
@@ -77,7 +79,7 @@ class ShortAnswerStrategy(BaseStrategy):
             print(f"AI已生成 {len(answers_to_fill)} 个回答。")
 
             # 4. 填写并提交
-            await self._fill_and_submit(answers_to_fill)
+            await self._fill_and_submit(answers_to_fill, is_chained_task=is_chained_task)
 
         except Exception as e:
             print(f"执行简答题策略时发生错误: {e}")
@@ -104,7 +106,7 @@ class ShortAnswerStrategy(BaseStrategy):
         except Exception:
             return ""
 
-    async def _fill_and_submit(self, answers: list[str]):
+    async def _fill_and_submit(self, answers: list[str], is_chained_task: bool = False):
         """将答案填入所有文本框并提交。"""
         textarea_locators = await self.driver_service.page.locator("textarea.question-inputbox-input").all()
 
@@ -121,13 +123,15 @@ class ShortAnswerStrategy(BaseStrategy):
 
         print("答案填写完毕。")
 
-        confirm = await asyncio.to_thread(input, "AI已填写答案。是否确认提交？[Y/n]: ")
-        if confirm.strip().upper() in ["Y", ""]:
-            await self.driver_service.page.click(".btn")
-            print("答案已提交。正在处理最终确认弹窗...")
-            await self.driver_service.handle_submission_confirmation()
-        else:
-            print("用户取消提交。")
+        # 如果不是“题中题”的一部分，则执行提交流程
+        if not is_chained_task:
+            confirm = await asyncio.to_thread(input, "AI已填写答案。是否确认提交？[Y/n]: ")
+            if confirm.strip().upper() in ["Y", ""]:
+                await self.driver_service.page.click(".btn")
+                print("答案已提交。正在处理最终确认弹窗...")
+                await self.driver_service.handle_submission_confirmation()
+            else:
+                print("用户取消提交。")
 
     async def close(self) -> None:
         pass

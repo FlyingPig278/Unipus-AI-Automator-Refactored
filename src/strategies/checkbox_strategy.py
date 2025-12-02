@@ -28,7 +28,7 @@ class CheckboxStrategy(BaseStrategy):
             return False
         return False
 
-    async def execute(self) -> None:
+    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> None:
         """
         执行自检打钩逻辑：循环查找第一个未打钩的项并点击，直到全部完成。
         """

@@ -4,7 +4,7 @@ import html
 import json  # 新增导入
 import urllib.parse  # 新增导入
 
-from playwright.async_api import async_playwright, Playwright, Browser, Page, Error as PlaywrightError
+from playwright.async_api import async_playwright, Playwright, Browser, Page, Locator, Error as PlaywrightError
 
 import src.config as config  # 导入我们的配置
 
@@ -99,15 +99,19 @@ class DriverService:
             print("错误：点击课程后，未能等到课程单元加载。")
             raise
 
-    async def get_media_source_and_type(self) -> tuple[str | None, str | None]:
-        """尝试在当前页面查找<audio>或<video>元素。"""
+    async def get_media_source_and_type(self, search_scope: Locator | Page | None = None) -> tuple[str | None, str | None]:
+        """
+        尝试在指定范围内查找<audio>或<video>元素。
+        如果未提供search_scope，则在整个页面中查找。
+        """
+        scope = search_scope if search_scope else self.page
         try:
-            media_locator = self.page.locator(config.MEDIA_SOURCE_ELEMENTS).first
-            print(f"查找结果：{await media_locator.text_content()}")
+            media_locator = scope.locator(config.MEDIA_SOURCE_ELEMENTS).first
+            await media_locator.wait_for(state="visible", timeout=1000) # 短暂等待以确保元素加载
             url = await media_locator.get_attribute('src')
             tag_name = await media_locator.evaluate('element => element.tagName.toLowerCase()')
             return url, tag_name
-        except PlaywrightError:
+        except Exception: # 改为捕获通用异常，因为可能会超时
             return None, None
 
     async def get_breadcrumb_parts(self) -> list[str]:

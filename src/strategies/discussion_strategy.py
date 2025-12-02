@@ -28,7 +28,7 @@ class DiscussionStrategy(BaseStrategy):
             return False
         return False
 
-    async def execute(self) -> None:
+    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> None:
         """执行讨论题的解题逻辑。"""
         print("=" * 20)
         print("开始执行讨论题策略...")
@@ -43,12 +43,12 @@ class DiscussionStrategy(BaseStrategy):
             sub_questions_selector = ".question-common-abs-material .component-htmlview p"
             sub_question_locators = await self.driver_service.page.locator(sub_questions_selector).all()
             sub_questions = [await loc.text_content() for loc in sub_question_locators if (await loc.text_content()).strip()]
-            sub_questions_text = "\n".join([f"- {q.strip()}" for q in sub_questions])
+            sub_questions_text = "\n".join([f"- {q.strip()}" for i, q in enumerate(sub_questions)])
             
             print(f"提取到主标题: {main_title}")
             print(f"提取到 {len(sub_questions)} 个子问题:\n{sub_questions_text}")
             
-            # 3. 格式化并调用AI
+            # 3. 格式化并调用AI (这里不需要额外上下文，shared_context不用于构建prompt)
             prompt = prompts.DISCUSSION_PROMPT.format(
                 main_title=main_title,
                 sub_questions=sub_questions_text
@@ -88,16 +88,17 @@ class DiscussionStrategy(BaseStrategy):
             await self.driver_service.page.locator(textarea_selector).fill(final_comment.strip())
             print("评论已填入文本框。")
 
-            # 6. 点击发布按钮
-            publish_button = self.driver_service.page.get_by_role("button", name="发 布")
-            # 使用 expect 等待按钮变为可点击状态
-            await expect(publish_button).to_be_enabled(timeout=5000)
-            print("发布按钮已变为可点击状态。")
+            # 6. 点击发布按钮 (仅当不是“题中题”模式时)
+            if not is_chained_task:
+                publish_button = self.driver_service.page.get_by_role("button", name="发 布")
+                # 使用 expect 等待按钮变为可点击状态
+                await expect(publish_button).to_be_enabled(timeout=5000)
+                print("发布按钮已变为可点击状态。")
 
-            await publish_button.click()
-            print("✅ 评论已发布。")
-            
-            await asyncio.sleep(2)
+                await publish_button.click()
+                print("✅ 评论已发布。")
+                
+                await asyncio.sleep(2) # 发布后等待一下
 
         except Exception as e:
             print(f"执行讨论题策略时发生错误: {e}")

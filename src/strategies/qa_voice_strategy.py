@@ -1,6 +1,7 @@
 import asyncio
 from typing import List, Dict, Any
-
+from playwright.async_api import Locator # 新增导入
+from playwright.async_api import Error as PlaywrightError
 from src import prompts  # 新增导入
 from src.services.ai_service import AIService
 from src.services.cache_service import CacheService
@@ -55,9 +56,9 @@ class QAVoiceStrategy(BaseVoiceStrategy):
         print("=" * 20)
         print("开始执行语音简答策略...")
 
-        # 1. 检查是否需要返回获取文章
+        # 1. 检查是否需要返回获取文章 (页面级别逻辑，只执行一次)
         direction_text = await self._get_direction_text()
-        article_text = ""
+        page_level_article_text = "" # 用于存储跨页获取的文章
         
         # 通过模糊匹配判断是否属于需要返回前文的特殊题型
         if "about the passage you have just read" in direction_text:
@@ -84,8 +85,8 @@ class QAVoiceStrategy(BaseVoiceStrategy):
                 
                 # c. 抓取文章内容
                 print("正在提取文章内容...")
-                article_text = await self.driver_service._extract_additional_material_for_ai() # 直接从文字材料中提取
-                if not article_text:
+                page_level_article_text = await self.driver_service._extract_additional_material_for_ai() # 直接从文字材料中提取
+                if not page_level_article_text:
                     print("警告：已跳转到文章页，但未能提取到文章文本。")
 
                 # d. 使用title属性构建稳定的locator，返回原始问题页面
@@ -99,10 +100,7 @@ class QAVoiceStrategy(BaseVoiceStrategy):
                 print(f"在返回获取文章的过程中发生严重错误，将中止任务: {e}")
                 return
         
-        if not article_text:
-             article_text = await self._get_article_text()
-        
-        # 2. 常规上下文提取和执行流程
+        # 2. 页面级别的额外材料 (在循环外，因为通常对整个页面有效)
         additional_material = await self.driver_service._extract_additional_material_for_ai()
         
         question_containers_selector = ".p-oral-personal-state .oral-personal-state-wrapper"
@@ -115,6 +113,10 @@ class QAVoiceStrategy(BaseVoiceStrategy):
             print(f"\n--- 开始处理第 {i + 1} 个语音简答题 ---")
 
             try:
+                # 3. 针对当前子题，提取其内部的媒体文件
+                current_question_media_text = await self._get_article_text(container=container)
+                
+                # 4. 提取子题问题文本
                 question_locator = container.locator(".oral-personal-state-oral-container .oral-personal-state-sentence-container .component-htmlview")
                 if not await question_locator.is_visible(timeout=5000):
                     print("错误：在当前容器中找不到问题文本元素，中止本页所有语音简答题。")
@@ -123,12 +125,18 @@ class QAVoiceStrategy(BaseVoiceStrategy):
                 question_text = (await question_locator.text_content()).strip()
                 print(f"提取到问题文本: '{question_text}'")
 
-                # 将共享上下文和本地上下文结合
-                combined_context = f"{shared_context}\n{article_text}"
+                # 5. 组合所有上下文信息
+                combined_article_text = ""
+                if page_level_article_text:
+                    combined_article_text += page_level_article_text + "\n"
+                if current_question_media_text:
+                    combined_article_text += current_question_media_text + "\n"
+                if shared_context:
+                    combined_article_text += shared_context + "\n"
 
                 prompt = prompts.QAVOICE_PROMPT.format(
                     direction_text=direction_text,
-                    article_text=combined_context,
+                    article_text=combined_article_text.strip(),
                     additional_material=additional_material,
                     question_text=question_text
                 )
@@ -139,7 +147,7 @@ class QAVoiceStrategy(BaseVoiceStrategy):
                 print("=" * 50)
                 confirm = await asyncio.to_thread(input, "是否确认发送此 Prompt？[Y/n]: ")
                 if confirm.strip().upper() not in ["Y", ""]:
-                    print("用户取消了 AI 调用，中止当前任务。")
+                    print("用户取消了 AI 调用，终止当前任务。")
                     should_abort_page = True
                     break
 
@@ -184,9 +192,13 @@ class QAVoiceStrategy(BaseVoiceStrategy):
                 print("答案已提交。正在处理最终确认弹窗...")
                 await self.driver_service.handle_submission_confirmation()
 
-    async def _get_article_text(self) -> str:
-        """提取文章或听力原文（音频或视频）。"""
-        media_url, media_type = await self.driver_service.get_media_source_and_type()
+    async def _get_article_text(self, container: Locator | None = None) -> str:
+        """
+        提取文章或听力原文（音频或视频）。
+        如果提供了container，则只在该container内部查找媒体。
+        """
+        search_scope = container if container else self.driver_service.page
+        media_url, media_type = await self.driver_service.get_media_source_and_type(search_scope=search_scope)
         if media_url:
             print(f"发现 {media_type} 文件，准备转写: {media_url}")
             try:
@@ -197,7 +209,17 @@ class QAVoiceStrategy(BaseVoiceStrategy):
             except Exception as e:
                 print(f"媒体文件转写时发生错误: {e}")
                 return ""
-        print("未在本页找到可用的音频或视频文件。")
+        
+        # 尝试查找常规文章容器（可能在container内，也可能在全局）
+        try:
+            article_locator = search_scope.locator(".comp-common-article-content").first
+            if await article_locator.is_visible(timeout=500):
+                print("发现文章容器，正在提取文本...")
+                return await article_locator.text_content()
+        except PlaywrightError:
+            pass # 未找到，继续
+
+        print("未在本页/容器内找到可用的音频、视频或文章。")
         return ""
 
     async def _get_direction_text(self) -> str:
@@ -207,4 +229,5 @@ class QAVoiceStrategy(BaseVoiceStrategy):
         except Exception:
             print("未找到题目说明（Direction）。")
             return ""
+
 
