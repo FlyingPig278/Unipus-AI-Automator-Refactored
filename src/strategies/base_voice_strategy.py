@@ -36,9 +36,72 @@ class BaseVoiceStrategy(BaseStrategy, ABC):
         """执行策略的入口。"""
         raise NotImplementedError
 
+    async def _install_persistent_hijack(self):
+        """
+        安装一个持久化的WebSocket劫持脚本。
+        该脚本会一直存在，通过一个全局变量来接收要发送的音频。
+        """
+        print("[AI-DEBUG] 正在安装持久化WebSocket劫持器...")
+        persistent_script = """
+        (() => {
+            if (window.isAiWebSocketHijackInstalled) {
+                console.log('[AI-DEBUG] 持久化劫持器已经安装，无需重复操作。');
+                return;
+            }
+            console.log('[AI-DEBUG] 首次安装持久化劫持器...');
+
+            window.originalWebSocket = window.WebSocket;
+
+            window.WebSocket = function(url, protocols) {
+                console.log(`[AI-DEBUG] [持久化] 新的WebSocket连接: ${url}`);
+                const ws = new window.originalWebSocket(url, protocols);
+
+                if (url.includes('speech.unipus.cn')) {
+                    console.log('[AI-DEBUG] [持久化] >>> 成功劫持到语音服务器的WebSocket! <<<');
+                    const originalSend = ws.send;
+                    ws.send = function(data) {
+                        const dataType = Object.prototype.toString.call(data);
+                        const isBinary = data instanceof Blob || data instanceof ArrayBuffer || ArrayBuffer.isView(data);
+                        
+                        if (window.ai_audio_payload && isBinary) {
+                            console.log(`[AI-DEBUG] [持久化] 检测到二进制数据流 (${dataType})，且AI音频已准备就绪。`);
+                            const payload = window.ai_audio_payload;
+                            delete window.ai_audio_payload; // 确保只使用一次
+
+                            try {
+                                const byteCharacters = atob(payload);
+                                const byteNumbers = new Array(byteCharacters.length);
+                                for (let i = 0; i < byteCharacters.length; i++) {
+                                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                                }
+                                const byteArray = new Uint8Array(byteNumbers);
+                                console.log(`[AI-DEBUG] [持久化] >>> 正在发送AI音频，大小: ${byteArray.byteLength}字节。`);
+                                originalSend.call(this, byteArray.buffer);
+                                console.log('[AI-DEBUG] [持久化] >>> AI音频发送完毕。');
+                            } catch (e) {
+                                console.error('[AI-DEBUG] [持久化] 音频替换过程中发生错误:', e);
+                            }
+                        } else if (isBinary) {
+                            console.log(`[AI-DEBUG] [持久化] 检测到二进制数据流 (${dataType})，但AI音频未准备好。已阻止原始音频发送。`);
+                            // 什么都不做，即阻止原始音频发送
+                        } else {
+                            console.log('[AI-DEBUG] [持久化] 检测到非音频数据，直接放行。', data);
+                            originalSend.call(this, data);
+                        }
+                    };
+                }
+                return ws;
+            };
+
+            window.isAiWebSocketHijackInstalled = true;
+            console.log('[AI-DEBUG] 持久化劫持器已激活。');
+        })();
+        """
+        await self.driver_service.page.evaluate(persistent_script)
+
     async def _execute_single_voice_task(self, container: Locator, ref_text: str, retry_params: List[Dict[str, Any]]) -> Tuple[bool, bool]:
         """
-        执行单个语音任务，包含完整的重试、注入、评分逻辑。
+        执行单个语音任务，包含完整的重试、注入、评分逻辑（使用一次性劫持）。
 
         :param container: 当前语音题的Playwright Locator容器。
         :param ref_text: 待通过TTS朗读的文本。
@@ -62,10 +125,8 @@ class BaseVoiceStrategy(BaseStrategy, ABC):
                     rate = wf.getframerate()
                     duration = frames / float(rate)
 
-                # 2. 注入并模拟操作
-                audio_b64 = base64.b64encode(audio_bytes).decode('ascii')
-                injection_script = self._get_injection_script(audio_b64)
-                await self._cleanup_injection()
+                # 2. 准备并注入一次性劫持脚本
+                injection_script = self._prepare_one_shot_injection(audio_bytes)
                 await self.driver_service.page.evaluate(injection_script)
 
                 record_button_locator = container.locator(".button-record")
@@ -77,19 +138,9 @@ class BaseVoiceStrategy(BaseStrategy, ABC):
                 await asyncio.sleep(duration + 0.5)
                 await record_button_locator.click()
 
-                # 3. 等待并解析分数
-                score_element = container.locator("span.score_layout")
-                await score_element.wait_for(state='visible', timeout=10000)
-                await self.driver_service.page.wait_for_function(
-                    """(el) => el && el.textContent && /^\d+$/.test(el.textContent.trim())""",
-                    arg=await score_element.element_handle(),
-                    timeout=20000
-                )
-                score_str = await score_element.text_content()
-                last_score = int(score_str)
+                last_score = await self._wait_for_and_get_score(container)
                 print(f"   尝试 {attempt + 1} 得分: {last_score} (使用参数: {params['description']})")
 
-                # 4. 根据分数判断
                 if last_score >= 85:
                     print("✅ 分数 >= 85，判定为优秀。")
                     succeeded = True
@@ -102,12 +153,11 @@ class BaseVoiceStrategy(BaseStrategy, ABC):
 
             except Exception as e:
                 print(f"   第 {attempt + 1} 次尝试时发生内部错误: {e}")
-                last_score = 0  # 发生错误时，分数记为0
+                last_score = 0
                 await asyncio.sleep(1)
             finally:
-                await self._cleanup_injection()
-        
-        # 在所有重试结束后进行最终判断
+                await self._cleanup_one_shot_injection() # 清理一次性劫持
+
         if not succeeded and last_score < 80:
             print(f"❌ 所有尝试结束后，最终分数 ({last_score}) 仍低于80，将中止整个页面。")
             return False, True
@@ -115,64 +165,118 @@ class BaseVoiceStrategy(BaseStrategy, ABC):
         print(f"✅ 所有尝试结束后，最终分数 ({last_score}) 在 80-84 之间，判定为可接受。")
         return True, False
 
+    # 新增：用于持久化劫持模式下，设置要发送的AI音频载荷
+    async def _set_persistent_audio_payload(self, audio_bytes: bytes):
+        """
+        通过设置一个全局变量来提供预生成的音频数据，供持久化劫持脚本使用。
+        """
+        audio_b64 = base64.b64encode(audio_bytes).decode('ascii')
+        print("   ...正在设置AI音频“信使”变量。")
+        await self.driver_service.page.evaluate(f"window.ai_audio_payload = '{audio_b64}';")
 
-    def _get_injection_script(self, audio_b64: str) -> str:
-        """生成用于注入的JavaScript劫持脚本。"""
+    # 新增：用于一次性劫持模式下，生成自包含的劫持脚本
+    def _prepare_one_shot_injection(self, audio_bytes: bytes) -> str:
+        """生成用于注入的、自包含的JavaScript劫持脚本（一次性）。"""
+        audio_b64 = base64.b64encode(audio_bytes).decode('ascii')
         script_template = """
         (() => {
-            console.log('>>> 执行劫持脚本...');
-            // 如果旧的劫持脚本存在，先移除
-            if (window.originalWebSocket) {
-                window.WebSocket = window.originalWebSocket;
+            console.log('[AI-DEBUG] [一次性] 执行一次性劫持脚本...');
+            if (window.originalWebSocketOneShot) { // 使用不同的变量名防止冲突
+                window.WebSocket = window.originalWebSocketOneShot;
+                console.log('[AI-DEBUG] [一次性] 已恢复原始WebSocket (一次性)。');
             }
-            window.injectedAudioB64 = 'AUDIO_B64_PLACEHOLDER';
-            window.ttsAudioSent = false;
-            window.originalWebSocket = window.WebSocket; // 保存原始WebSocket
+            window.injectedAudioB64OneShot = 'AUDIO_B64_PLACEHOLDER';
+            window.ttsAudioSentOneShot = false;
+            window.originalWebSocketOneShot = window.WebSocket;
 
             window.WebSocket = function(url, protocols) {
-                const ws = new window.originalWebSocket(url, protocols);
+                console.log(`[AI-DEBUG] [一次性] WebSocket连接: ${url}`);
+                const ws = new window.originalWebSocketOneShot(url, protocols);
                 if (url.includes('speech.unipus.cn')) {
-                    console.log('>>> 成功劫持语音评测WebSocket!');
+                    console.log('[AI-DEBUG] [一次性] >>> 劫持到语音WebSocket! <<<');
                     const originalSend = ws.send;
                     ws.send = function(data) {
-                        if (data.buffer instanceof ArrayBuffer) {
-                            if (!window.ttsAudioSent) {
-                                window.ttsAudioSent = true;
-                                console.log('>>> 拦截到第一块原始音频数据，准备替换...');
-                                const byteCharacters = atob(window.injectedAudioB64);
-                                const byteNumbers = new Array(byteCharacters.length);
-                                for (let i = 0; i < byteCharacters.length; i++) {
-                                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                        const isBinary = data instanceof Blob || data instanceof ArrayBuffer || ArrayBuffer.isView(data);
+                        if (isBinary) {
+                            if (!window.ttsAudioSentOneShot) {
+                                window.ttsAudioSentOneShot = true;
+                                console.log('[AI-DEBUG] [一次性] 拦截到第一块原始音频数据，准备替换...');
+                                try {
+                                    const byteCharacters = atob(window.injectedAudioB64OneShot);
+                                    const byteNumbers = new Array(byteCharacters.length);
+                                    for (let i = 0; i < byteCharacters.length; i++) {
+                                        byteNumbers[i] = byteCharacters.charCodeAt(i);
+                                    }
+                                    const byteArray = new Uint8Array(byteNumbers);
+                                    console.log(`[AI-DEBUG] [一次性] 发送AI音频，大小: ${byteArray.byteLength}字节。`);
+                                    originalSend.call(this, byteArray.buffer);
+                                    console.log('[AI-DEBUG] [一次性] AI音频发送完毕。');
+                                } catch (e) {
+                                    console.error('[AI-DEBUG] [一次性] 音频替换错误:', e);
                                 }
-                                const byteArray = new Uint8Array(byteNumbers);
-                                console.log('>>> 发送已替换的高质量TTS音频数据，大小: ' + byteArray.byteLength + ' 字节');
-                                originalSend.call(this, byteArray.buffer);
                             } else {
-                                console.log('>>> 已发送过TTS音频，忽略此原始音频块。');
+                                console.log('[AI-DEBUG] [一次性] 后续音频块被阻止。');
                             }
                         } else {
-                            console.log('>>> 放行文本消息:', data);
                             originalSend.call(this, data);
                         }
                     };
                 }
                 return ws;
             };
+            console.log('[AI-DEBUG] [一次性] 劫持已激活。');
         })();
         """
         return script_template.replace('AUDIO_B64_PLACEHOLDER', audio_b64)
 
-    async def _cleanup_injection(self):
-        """清理注入的脚本和全局变量，恢复原始WebSocket。"""
+
+    async def _wait_for_and_get_score(self, container: Locator, timeout: int = 20000) -> int:
+        """
+        在指定的容器内等待分数出现，并解析返回。
+        """
+        score_element = container.locator("span.score_layout, .score")
+        try:
+            await self.driver_service.page.wait_for_function(
+                """(el) => {
+                    if (!el || !el.textContent) return false;
+                    const isVisible = el.offsetParent !== null;
+                    const hasNumber = /^\d+$/.test(el.textContent.trim());
+                    return isVisible && hasNumber;
+                }""",
+                arg=await score_element.element_handle(),
+                timeout=timeout
+            )
+            score_str = await score_element.text_content()
+            return int(score_str)
+        except Exception as e:
+            print(f"   等待或解析分数时出错: {e}")
+            return 0
+
+    # 用于清理一次性劫持的旧方法
+    async def _cleanup_one_shot_injection(self):
+        """
+        清理一次性注入的脚本和全局变量，恢复原始WebSocket。
+        """
         try:
             await self.driver_service.page.evaluate("""
-                if (window.originalWebSocket) {
-                    window.WebSocket = window.originalWebSocket;
-                    delete window.originalWebSocket;
-                    delete window.injectedAudioB64;
-                    delete window.ttsAudioSent;
-                    console.log('>>> 劫持脚本已清理。');
+                if (window.originalWebSocketOneShot) {
+                    window.WebSocket = window.originalWebSocketOneShot;
+                    delete window.originalWebSocketOneShot;
+                    delete window.injectedAudioB64OneShot;
+                    delete window.ttsAudioSentOneShot;
+                    console.log('[AI-DEBUG] [一次性] 劫持脚本已清理。');
                 }
             """)
         except Exception as e:
-            print(f"清理劫持脚本时发生错误: {e}")
+            print(f"清理一次性劫持脚本时发生错误: {e}")
+
+    # 用于清理持久化劫持的“信使”变量
+    async def _clear_persistent_audio_payload(self):
+        """
+        清理注入的“信使”变量，为下一回合做准备。
+        """
+        try:
+            await self.driver_service.page.evaluate("delete window.ai_audio_payload;")
+        except Exception as e:
+            print(f"清理“信使”变量时发生错误: {e}")
+

@@ -34,7 +34,7 @@ TASK_ITEM_TYPE_NAME = '[class*="courses-unit_taskTypeName"]'   # 任务项的类
 
 # Question Page
 BREADCRUMB_TEXT_ELEMENTS = ".pc-break-crumb .pc-break-crumb-text"
-MEDIA_SOURCE_ELEMENTS = ".audio-material-wrapper audio, .video-material-wrapper video" # 精确匹配作为问题材料的音频或视频
+MEDIA_SOURCE_ELEMENTS = ".audio-material-wrapper audio, .video-material-wrapper video, .component-htmlview audio, .component-htmlview video" # 精确匹配作为问题材料的音频或视频
 
 # HTTP Headers for requests
 HEADERS = {

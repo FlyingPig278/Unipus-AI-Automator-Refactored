@@ -10,6 +10,7 @@ from src.strategies.multiple_choice_strategy import MultipleChoiceStrategy
 from src.strategies.discussion_strategy import DiscussionStrategy
 from src.strategies.drag_and_drop_strategy import DragAndDropStrategy
 from src.strategies.fill_in_the_blank_strategy import FillInTheBlankStrategy
+from src.strategies.role_play_strategy import RolePlayStrategy
 from src.strategies.short_answer_strategy import ShortAnswerStrategy
 from src.strategies.qa_voice_strategy import QAVoiceStrategy
 
@@ -18,6 +19,7 @@ from src.strategies.qa_voice_strategy import QAVoiceStrategy
 # 策略的顺序很重要，会按照从上到下的顺序进行检查。
 # ==============================================================================
 AVAILABLE_STRATEGIES = [
+    RolePlayStrategy,           # 角色扮演对话题
     ReadAloudStrategy,          # 文字朗读题
     QAVoiceStrategy,            # 语音简答题
     CheckboxStrategy,           # 自检打钩题

@@ -176,7 +176,7 @@ class QAVoiceStrategy(BaseVoiceStrategy):
                 should_abort_page = True
                 break
             finally:
-                await self._cleanup_injection()
+                await self._cleanup_one_shot_injection()
 
         print("\n所有语音简答题处理完毕。")
 
