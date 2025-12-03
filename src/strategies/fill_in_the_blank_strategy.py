@@ -193,7 +193,7 @@ class FillInTheBlankStrategy(BaseStrategy):
         """导航到答案解析页面，提取正确答案，并写入缓存。"""
         try:
             await self.driver_service._navigate_to_answer_analysis_page()
-            correct_answers_list = await self.driver_service.extract_all_correct_answers_from_analysis_page()
+            correct_answers_list = await self.driver_service.extract_fill_in_the_blank_answers_from_analysis_page()
 
             if not correct_answers_list:
                 print("警告：未能从解析页面提取到任何答案，无法更新缓存。" )

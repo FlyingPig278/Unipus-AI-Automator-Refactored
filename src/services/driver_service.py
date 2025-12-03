@@ -318,8 +318,7 @@ class DriverService:
     async def handle_submission_confirmation(self):
         """处理点击提交后的“最终确认”弹窗。"""
         try:
-            await asyncio.sleep(0.5)
-            await self.page.get_by_role("button", name="确定").click(timeout=500)
+            await self.page.get_by_role("button", name="确 定").click(timeout=1500)
             print("已点击“最终确认提交”弹窗。")
         except PlaywrightError:
             pass
@@ -367,6 +366,45 @@ class DriverService:
         except Exception as e:
             print(f"提取正确答案时发生错误: {e}")
             
+        return all_answers
+
+    async def extract_fill_in_the_blank_answers_from_analysis_page(self) -> list[str]:
+        """
+        [新增] 从答案解析页面为“填空题”提取所有正确答案。
+        该方法能智能处理答对和答错两种情况下，正确答案在DOM中的不同位置。
+        """
+        print("正在为填空题从解析页面提取所有正确答案...")
+        all_answers = []
+        
+        # 定位到所有填空的容器
+        blank_containers = await self.page.locator(".fe-scoop").all()
+        
+        if not blank_containers:
+            print("警告：在解析页面未找到任何填空题容器 (.fe-scoop)。")
+            return []
+
+        for i, container in enumerate(blank_containers):
+            correct_answer = ""
+            try:
+                # 方案一：优先查找“答错时”出现的正确答案提示（最可靠）
+                reference_answer_locator = container.locator("span.reference")
+                if await reference_answer_locator.count() > 0:
+                    correct_answer = (await reference_answer_locator.first.text_content()).strip()
+                else:
+                    # 方案二：如果没找到，说明“答对了”，直接从 input 的 value 获取
+                    input_locator = container.locator("input")
+                    # 确保 input 存在且有 value 属性
+                    input_value = await input_locator.get_attribute("value")
+                    correct_answer = (input_value or "").strip()
+                
+                all_answers.append(correct_answer)
+                print(f"  - 填空 {i+1}: 找到答案 '{correct_answer}'")
+
+            except Exception as e:
+                print(f"  - 提取第 {i+1} 个填空题答案时出错: {e}")
+                all_answers.append("") # 出错时添加空字符串以保持顺序
+
+        print(f"已提取到所有填空题答案: {all_answers}")
         return all_answers
 
     async def _extract_additional_material_for_ai(self) -> str:
