@@ -1,7 +1,8 @@
 import asyncio
+
 from playwright.async_api import Error as PlaywrightError
 
-from src import prompts, config
+from src import prompts
 from src.services.ai_service import AIService
 from src.services.cache_service import CacheService
 from src.services.driver_service import DriverService
@@ -105,13 +106,6 @@ class ShortAnswerStrategy(BaseStrategy):
         except Exception:
             pass
         return ""
-
-    async def _get_direction_text(self) -> str:
-        """提取题目说明文字。"""
-        try:
-            return await self.driver_service.page.locator(".abs-direction").text_content()
-        except Exception:
-            return ""
 
     async def _fill_and_submit(self, answers: list[str], is_chained_task: bool = False) -> bool:
         """将答案填入所有文本框并提交。"""

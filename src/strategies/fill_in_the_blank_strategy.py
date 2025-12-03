@@ -145,14 +145,6 @@ class FillInTheBlankStrategy(BaseStrategy):
         print("未在本页找到可用的音频、视频或文章。")
         return ""
 
-    async def _get_direction_text(self) -> str:
-        """提取题目说明文字。"""
-        try:
-            return await self.driver_service.page.locator(".abs-direction").text_content()
-        except PlaywrightError:
-            print("未找到题目说明（Direction）。")
-            return ""
-
     async def _fill_and_submit(self, answers: list[str], cache_write_needed: bool, breadcrumb_parts: list[str],
                                is_chained_task: bool = False) -> bool:
         """将答案填入网页。如果不是“题中题”模式，则同时处理提交。

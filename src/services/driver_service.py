@@ -101,16 +101,18 @@ class DriverService:
 
     async def get_media_source_and_type(self, search_scope: Locator | Page | None = None) -> tuple[str | None, str | None]:
         """
-        尝试在指定范围内查找<audio>或<video>元素。
+        尝试在指定范围内查找<audio>或<video>元素，使用短暂超时以避免卡顿。
         如果未提供search_scope，则在整个页面中查找。
         """
         scope = search_scope if search_scope else self.page
         try:
             media_locator = scope.locator(config.MEDIA_SOURCE_ELEMENTS).first
+            # 等待元素附加到DOM中即可，无需等待其可见，这会更快。超时设为1秒。
+            await media_locator.wait_for(state="attached", timeout=1000)
             url = await media_locator.get_attribute('src')
             tag_name = await media_locator.evaluate('element => element.tagName.toLowerCase()')
             return url, tag_name
-        except Exception: # 改为捕获通用异常，因为可能会超时
+        except Exception: # 捕获超时等错误
             return None, None
 
     async def get_breadcrumb_parts(self) -> list[str]:
@@ -218,9 +220,6 @@ class DriverService:
 
         for unit_locator in units_locators:
             unit_name = (await unit_locator.text_content()).strip().split('\n')[0]
-            if "Test" in unit_name:
-                print(f"检测到测试单元 '{unit_name}'，已跳过。")
-                continue
             
             print(f"正在检查单元: {unit_name}")
             try:
@@ -229,6 +228,7 @@ class DriverService:
                     await unit_locator.scroll_into_view_if_needed()
                     await unit_locator.click()
                     await self.page.locator(f'[data-index="{unit_index}"][class*="tabActive"]').wait_for()
+                    await asyncio.sleep(0.3)
 
                 active_area_locator = self.page.locator(config.ACTIVE_UNIT_AREA)
                 await active_area_locator.locator(config.TASK_ITEM_CONTAINER).first.wait_for()

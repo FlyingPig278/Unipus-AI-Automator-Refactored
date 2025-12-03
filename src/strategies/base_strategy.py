@@ -46,3 +46,16 @@ class BaseStrategy(ABC):
         self.driver_service = driver_service
         self.ai_service = ai_service
         self.cache_service = cache_service
+
+    async def _get_direction_text(self) -> str:
+        """提取题目说明文字，使用短超时以避免不必要的等待。"""
+        try:
+            locator = self.driver_service.page.locator(".abs-direction")
+            # 使用短暂超时，因为“说明”并非总是存在。
+            if await locator.is_visible(timeout=1000):
+                return await locator.text_content()
+        except Exception:
+            # 捕获超时或其他错误，静默处理
+            pass
+        print("未找到题目说明（Direction）。")
+        return ""

@@ -1,7 +1,8 @@
 import asyncio
-from typing import List, Dict, Any
-from playwright.async_api import Locator # 新增导入
+
 from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import Locator  # 新增导入
+
 from src import prompts  # 新增导入
 from src.services.ai_service import AIService
 from src.services.cache_service import CacheService
@@ -240,13 +241,4 @@ class QAVoiceStrategy(BaseVoiceStrategy):
 
         print("未在本页/容器内找到可用的音频、视频或文章。")
         return ""
-
-    async def _get_direction_text(self) -> str:
-        """提取题目说明文字。"""
-        try:
-            return await self.driver_service.page.locator(".abs-direction").text_content()
-        except Exception:
-            print("未找到题目说明（Direction）。")
-            return ""
-
 
