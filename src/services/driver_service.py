@@ -318,6 +318,7 @@ class DriverService:
     async def handle_submission_confirmation(self):
         """处理点击提交后的“最终确认”弹窗。"""
         try:
+            await asyncio.sleep(0.5)
             await self.page.get_by_role("button", name="确定").click(timeout=500)
             print("已点击“最终确认提交”弹窗。")
         except PlaywrightError:
