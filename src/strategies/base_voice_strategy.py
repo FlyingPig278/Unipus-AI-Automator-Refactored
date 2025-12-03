@@ -76,7 +76,7 @@ class BaseVoiceStrategy(BaseStrategy, ABC):
                                 }
                                 const byteArray = new Uint8Array(byteNumbers);
                                 console.log(`[AI-DEBUG] [持久化] >>> 正在发送AI音频，大小: ${byteArray.byteLength}字节。`);
-                                originalSend.call(this, byteArray.buffer);
+                                originalSend.call(this, byteArray.buffer);// TODO: 未来可在此处实现分块发送，模拟真实流式传输行为
                                 console.log('[AI-DEBUG] [持久化] >>> AI音频发送完毕。');
                             } catch (e) {
                                 console.error('[AI-DEBUG] [持久化] 音频替换过程中发生错误:', e);
