@@ -59,8 +59,11 @@ class RolePlayStrategy(BaseVoiceStrategy):
                 print(f"平均分 {average_score:.2f} 达到阈值 {score_threshold}，任务成功。")
                 # 如果不是题中题的一部分，点击最终的提交按钮
                 if not is_chained_task:
-                    await self.driver_service.page.locator(".btn:has-text('提 交')").click()
+                    # 使用更健壮的选择器以防万一
+                    submit_button_locator = self.driver_service.page.locator(".btn:has-text('提交'), .btn:has-text('提 交')").first
+                    await submit_button_locator.click()
                     print("已点击提交按钮。")
+                    await self.driver_service.handle_submission_confirmation()
                 return True
             else:
                 current_retry += 1
@@ -74,8 +77,10 @@ class RolePlayStrategy(BaseVoiceStrategy):
                     # 即使失败，如果不是题中题，也尝试点击提交按钮以结束任务
                     if not is_chained_task:
                         try:
-                            await self.driver_service.page.locator(".btn:has-text('提 交')").click()
+                            submit_button_locator = self.driver_service.page.locator(".btn:has-text('提交'), .btn:has-text('提 交')").first
+                            await submit_button_locator.click()
                             print("已点击提交按钮（最后尝试）。")
+                            await self.driver_service.handle_submission_confirmation()
                         except Exception as e:
                             print(f"最后尝试提交时出错: {e}")
                     return False
