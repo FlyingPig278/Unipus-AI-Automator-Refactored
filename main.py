@@ -14,6 +14,7 @@ from src.strategies.role_play_strategy import RolePlayStrategy
 from src.strategies.short_answer_strategy import ShortAnswerStrategy
 from src.strategies.qa_voice_strategy import QAVoiceStrategy
 from src.strategies.unsupported_image_strategy import UnsupportedImageStrategy
+from rich.progress import track
 
 # ==============================================================================
 # 全局可用策略列表
@@ -42,32 +43,36 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
         btn_text = ""
         try:
             # 使用更精确的选择器，只寻找我们关心的“提交”或“下一题”按钮
-            action_btn = browser_service.page.locator(".btn:has-text('下一题'), .btn:has-text('提 交')").first
+            action_btn = browser_service.page.locator(".btn:has-text('下一题'), .btn:has-text('提 交'), .btn:has-text('提交')").first
             await action_btn.wait_for(state="visible", timeout=3000)
             btn_text = await action_btn.text_content()
         except Exception:
             # 捕获超时等错误，意味着页面上很可能没有我们关心的按钮
-            print("在页面上未找到‘提交’或‘下一题’按钮。")
+            if not config.IS_AUTO_MODE:
+                print("在页面上未找到‘提交’或‘下一题’按钮。")
 
         # 模式一：简单任务（直接提交）
-        if "提 交" in btn_text:
-            print("检测到“提交”按钮，执行单页策略...")
+        if "提 交" in btn_text or "提交" in btn_text:
+            if not config.IS_AUTO_MODE:
+                print("检测到“提交”按钮，执行单页策略...")
             current_strategy = None
             for StrategyClass in AVAILABLE_STRATEGIES:
                 if await StrategyClass.check(browser_service):
                     current_strategy = StrategyClass(browser_service, ai_service, cache_service)
-                    print(f"匹配到策略: {StrategyClass.__name__}")
+                    if not config.IS_AUTO_MODE:
+                        print(f"匹配到策略: {StrategyClass.__name__}")
                     break
             
             if current_strategy:
-                # 正常执行，策略自己负责缓存和提交
                 await current_strategy.execute(is_chained_task=False)
             else:
-                print("在当前页面未找到适合的策略。")
+                if not config.IS_AUTO_MODE:
+                    print("在当前页面未找到适合的策略。")
             
         # 模式二：“题中题”任务（“下一题”循环）
         elif "下一题" in btn_text:
-            print("检测到“下一题”按钮，启动“题中题”循环模式（缓存已禁用）。")
+            if not config.IS_AUTO_MODE:
+                print("检测到“下一题”按钮，启动“题中题”循环模式。")
             shared_context = ""
             
             while True:
@@ -75,7 +80,8 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
                 for StrategyClass in AVAILABLE_STRATEGIES:
                     if await StrategyClass.check(browser_service):
                         current_strategy = StrategyClass(browser_service, ai_service, cache_service)
-                        print(f"匹配到子题策略: {StrategyClass.__name__}")
+                        if not config.IS_AUTO_MODE:
+                            print(f"匹配到子题策略: {StrategyClass.__name__}")
                         break
                 
                 if current_strategy:
@@ -83,29 +89,32 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
                         succeeded = await current_strategy.execute(shared_context=shared_context, is_chained_task=True)
                         if not succeeded:
                             print(f"策略 {current_strategy.__class__.__name__} 执行提前终止，任务链中断。")
-                            break # 策略执行失败或被取消，终止循环
+                            break 
                     except Exception as e:
                         print(f"策略 {current_strategy.__class__.__name__} 执行时发生错误，终止当前任务链: {e}")
-                        break # 发生错误，立即终止循环
+                        break
                 else:
-                    print("当前子题未匹配到任何策略，尝试提取材料作为共享上下文...")
+                    if not config.IS_AUTO_MODE:
+                        print("当前子题未匹配到任何策略，尝试提取材料作为共享上下文...")
                     material = await browser_service._extract_additional_material_for_ai()
                     if material:
-                        print("已提取到共享材料。")
+                        if not config.IS_AUTO_MODE:
+                            print("已提取到共享材料。")
                         shared_context += f"\n{material}"
 
-                # 再次使用精确选择器定位操作按钮
-                action_btn_loop = browser_service.page.locator(".btn:has-text('下一题'), .btn:has-text('提 交')").first
+                action_btn_loop = browser_service.page.locator(".btn:has-text('下一题'), .btn:has-text('提 交'), .btn:has-text('提交')").first
                 await action_btn_loop.wait_for(state="visible", timeout=10000)
                 current_btn_text = await action_btn_loop.text_content()
 
                 if "下一题" in current_btn_text:
-                    print("点击“下一题”，进入下一个子题...")
+                    if not config.IS_AUTO_MODE:
+                        print("点击“下一题”，进入下一个子题...")
                     await action_btn_loop.click()
                     await asyncio.sleep(1) 
                     await browser_service.handle_common_popups()
-                elif "提 交" in current_btn_text:
-                    print("检测到最终“提交”按钮，正在提交任务...")
+                elif "提 交" in current_btn_text or "提交" in current_btn_text:
+                    if not config.IS_AUTO_MODE:
+                        print("检测到最终“提交”按钮，正在提交任务...")
                     await action_btn_loop.click()
                     await browser_service.handle_submission_confirmation()
                     print("“题中题”任务完成。")
@@ -116,26 +125,30 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
         
         # 模式三：无按钮页面
         else:
-            print("此页面无提交或下一题按钮，将检查是否有适用的无操作策略...")
+            if not config.IS_AUTO_MODE:
+                print("此页面无提交或下一题按钮，将检查是否有适用的无操作策略...")
             current_strategy = None
             for StrategyClass in AVAILABLE_STRATEGIES:
                 if await StrategyClass.check(browser_service):
                     current_strategy = StrategyClass(browser_service, ai_service, cache_service)
-                    print(f"匹配到策略: {StrategyClass.__name__}")
+                    if not config.IS_AUTO_MODE:
+                        print(f"匹配到策略: {StrategyClass.__name__}")
                     break
             
             if current_strategy:
-                # 假设此策略执行后不需要提交
                 await current_strategy.execute(is_chained_task=True) 
             else:
-                print("未找到任何适用策略，此页面可能为纯信息页。继续下一个任务。")
+                if not config.IS_AUTO_MODE:
+                    print("未找到任何适用策略，此页面可能为纯信息页。继续下一个任务。")
 
     except Exception as e:
         print(f"执行策略期间发生错误: {e}")
 
 async def run_auto_mode(browser_service: DriverService, ai_service: AIService, cache_service: CacheService):
    """运行全自动答题模式。"""
-   # 1. 获取并选择课程
+   config.IS_AUTO_MODE = True
+   print("已进入全自动模式。")
+
    courses = await browser_service.get_course_list()
    if not courses:
        print("未能获取到任何课程，程序终止。")
@@ -157,7 +170,6 @@ async def run_auto_mode(browser_service: DriverService, ai_service: AIService, c
 
    await browser_service.select_course_by_index(choice)
 
-   # 2. 获取待办任务列表
    pending_tasks = await browser_service.get_pending_tasks()
 
    if not pending_tasks:
@@ -165,8 +177,8 @@ async def run_auto_mode(browser_service: DriverService, ai_service: AIService, c
    else:
        print(f"共发现 {len(pending_tasks)} 个待完成任务。")
 
-       # 3. 循环处理每个任务
-       for task in pending_tasks:
+       # 使用 rich.progress.track 显示进度条
+       for task in track(pending_tasks, description="正在处理课程任务..."):
            print(f"\n正在处理任务: [单元 {task['unit_name']}] - {task['task_name']}")
            await browser_service.navigate_to_task(task['course_url'], task['unit_index'], task['task_index'])
            await run_strategy_on_current_page(browser_service, ai_service, cache_service)
@@ -176,14 +188,15 @@ async def run_auto_mode(browser_service: DriverService, ai_service: AIService, c
 
 async def run_manual_debug_mode(browser_service: DriverService, ai_service: AIService, cache_service: CacheService):
    """运行手动调试模式，允许用户手动导航到页面后，由程序接管。"""
+   config.IS_AUTO_MODE = False
    print("\n已进入手动调试模式。")
+   
    while True:
        user_input = await asyncio.to_thread(input, "请在浏览器中手动进入您想调试的题目页面，然后回到此处按Enter键继续 (输入 'q' 退出此模式): ")
        if user_input.lower() == 'q':
            break
 
        print("程序已接管，开始分析当前页面...")
-
        print("正在检查通用弹窗...")
        await browser_service.handle_common_popups()
 
@@ -196,20 +209,17 @@ async def main():
        print("错误：请确保您已经从 .env.example 复制创建了 .env 文件，")
        print("并在其中填写了您的 U_USERNAME, U_PASSWORD, 和 DEEPSEEK_API_KEY。")
        return
+   
+   # 初始化运行时状态
+   config.IS_AUTO_MODE = False
 
    browser_service = DriverService()
    try:
-       # 异步启动浏览器
        await browser_service.start(headless=False)
-
-       # 初始化其他服务
        ai_service = AIService()
        cache_service = CacheService()
-
-       # 异步登录
        await browser_service.login()
 
-       # 模式选择循环
        while True:
            print("\n" + "="*30)
            print("  请选择运行模式:")

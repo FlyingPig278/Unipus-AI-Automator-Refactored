@@ -236,8 +236,19 @@ class DriverService:
 
                 for i, task_locator in enumerate(task_locators):
                     text_content = await task_locator.text_content()
-                    # if "必修" in text_content and "已完成" not in text_content:
-                    if True:
+                    
+                    should_process = False
+                    # 根据配置决定是否处理该任务
+                    if config.PROCESS_ONLY_INCOMPLETE_TASKS:
+                        # 模式一：只处理“必修”且“未完成”的
+                        if "必修" in text_content and "已完成" not in text_content:
+                            should_process = True
+                    else:
+                        # 模式二：处理所有“必修”的，无论是否完成
+                        if "必修" in text_content:
+                            should_process = True
+                    
+                    if should_process:
                         task_name = await task_locator.locator(config.TASK_ITEM_TYPE_NAME).text_content()
                         pending_tasks.append({
                             "unit_index": unit_index, "unit_name": unit_name,

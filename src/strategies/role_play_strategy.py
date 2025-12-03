@@ -2,8 +2,6 @@ import wave
 from io import BytesIO
 from typing import List, Dict, Any
 
-from playwright.async_api import Locator
-
 from src.services.ai_service import AIService
 from src.services.cache_service import CacheService
 from src.services.driver_service import DriverService

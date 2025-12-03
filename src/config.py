@@ -18,9 +18,13 @@ DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
 WHISPER_MODEL = "base"
 DEEPSEEK_CHAT_MODEL = "deepseek-chat"
 
-# --- Debugging ---
-# 如果设置为True，程序将忽略所有缓存，强制调用AI进行解答，方便调试Prompt。
-FORCE_AI = False
+# ==============================================================================
+# 运行时配置
+# ==============================================================================
+FORCE_AI = False  # 如果为True，即使有缓存，也强制使用AI重新回答
+AUTO_MODE_NO_CONFIRM = True # 如果为True，在全自动模式下，程序将不会等待用户确认，自动发送Prompt并提交答案
+PROCESS_ONLY_INCOMPLETE_TASKS = True # 如果为True，程序将只处理“必修”且“未完成”的任务；如果为False，将处理所有“必修”任务
+IS_AUTO_MODE = False # 运行时状态变量，由main.py在进入不同模式时动态设置
 
 # --- CSS Selectors ---
 # Course Page

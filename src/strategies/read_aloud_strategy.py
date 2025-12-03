@@ -1,8 +1,6 @@
 import asyncio
-import base64
-import wave
-from io import BytesIO
 
+from src import config
 from src.services.ai_service import AIService
 from src.services.cache_service import CacheService
 from src.services.driver_service import DriverService
@@ -93,8 +91,13 @@ class ReadAloudStrategy(BaseVoiceStrategy):
 
         # 如果不是“题中题”的一部分，则执行提交流程
         if not is_chained_task:
-            confirm = await asyncio.to_thread(input, "所有语音题均已完成且分数达标。是否确认提交？[Y/n]: ")
-            if confirm.strip().upper() in ["Y", ""]:
+            should_submit = True
+            if not (config.IS_AUTO_MODE and config.AUTO_MODE_NO_CONFIRM):
+                confirm = await asyncio.to_thread(input, "所有语音题均已完成且分数达标。是否确认提交？[Y/n]: ")
+                if confirm.strip().upper() not in ["Y", ""]:
+                    should_submit = False
+
+            if should_submit:
                 await self.driver_service.page.click(".btn")
                 print("答案已提交。正在处理最终确认弹窗...")
                 await self.driver_service.handle_submission_confirmation()

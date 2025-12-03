@@ -1,6 +1,6 @@
 import asyncio
 from playwright.async_api import Error as PlaywrightError, expect # 增加 expect 导入
-from src import prompts
+from src import prompts, config
 from src.strategies.base_strategy import BaseStrategy
 from src.services.driver_service import DriverService
 from src.services.ai_service import AIService
@@ -54,14 +54,17 @@ class DiscussionStrategy(BaseStrategy):
                 sub_questions=sub_questions_text
             )
             
-            print("=" * 50)
-            print("即将发送给 AI 的完整 Prompt 如下：")
-            print(prompt)
-            print("=" * 50)
-            confirm = await asyncio.to_thread(input, "是否确认发送此 Prompt？[Y/n]: ")
-            if confirm.strip().upper() not in ["Y", ""]:
-                print("用户取消了 AI 调用，终止当前任务。")
-                return False
+            if not config.IS_AUTO_MODE:
+                print("=" * 50)
+                print("即将发送给 AI 的完整 Prompt 如下：")
+                print(prompt)
+                print("=" * 50)
+
+            if not (config.IS_AUTO_MODE and config.AUTO_MODE_NO_CONFIRM):
+                confirm = await asyncio.to_thread(input, "是否确认发送此 Prompt？[Y/n]: ")
+                if confirm.strip().upper() not in ["Y", ""]:
+                    print("用户取消了 AI 调用，终止当前任务。")
+                    return False
 
             print("正在请求AI生成评论...")
             ai_response = self.ai_service.get_chat_completion(prompt)

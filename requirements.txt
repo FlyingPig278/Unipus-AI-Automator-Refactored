@@ -3,6 +3,7 @@ playwright
 requests
 openai
 openai-whisper
+rich
 
 # For audio processing
 pydub

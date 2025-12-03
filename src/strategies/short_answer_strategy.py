@@ -2,7 +2,7 @@ import asyncio
 
 from playwright.async_api import Error as PlaywrightError
 
-from src import prompts
+from src import prompts, config
 from src.services.ai_service import AIService
 from src.services.cache_service import CacheService
 from src.services.driver_service import DriverService
@@ -79,14 +79,17 @@ class ShortAnswerStrategy(BaseStrategy):
                     sub_questions=sub_questions_text
                 )
 
-            print("=" * 50)
-            print("即将发送给 AI 的完整 Prompt 如下：")
-            print(prompt)
-            print("=" * 50)
-            confirm = await asyncio.to_thread(input, "是否确认发送此 Prompt？[Y/n]: ")
-            if confirm.strip().upper() not in ["Y", ""]:
-                print("用户取消了 AI 调用，终止当前任务。")
-                return False
+            if not config.IS_AUTO_MODE:
+                print("=" * 50)
+                print("即将发送给 AI 的完整 Prompt 如下：")
+                print(prompt)
+                print("=" * 50)
+            
+            if not (config.IS_AUTO_MODE and config.AUTO_MODE_NO_CONFIRM):
+                confirm = await asyncio.to_thread(input, "是否确认发送此 Prompt？[Y/n]: ")
+                if confirm.strip().upper() not in ["Y", ""]:
+                    print("用户取消了 AI 调用，终止当前任务。")
+                    return False
             
             json_data = self.ai_service.get_chat_completion(prompt)
             if not json_data or "answers" not in json_data or not isinstance(json_data["answers"], list):
@@ -138,8 +141,13 @@ class ShortAnswerStrategy(BaseStrategy):
 
             # 如果不是“题中题”的一部分，则执行提交流程
             if not is_chained_task:
-                confirm = await asyncio.to_thread(input, "AI已填写答案。是否确认提交？[Y/n]: ")
-                if confirm.strip().upper() in ["Y", ""]:
+                should_submit = True
+                if not (config.IS_AUTO_MODE and config.AUTO_MODE_NO_CONFIRM):
+                    confirm = await asyncio.to_thread(input, "AI已填写答案。是否确认提交？[Y/n]: ")
+                    if confirm.strip().upper() not in ["Y", ""]:
+                        should_submit = False
+                
+                if should_submit:
                     await self.driver_service.page.click(".btn")
                     print("答案已提交。正在处理最终确认弹窗...")
                     await self.driver_service.handle_submission_confirmation()

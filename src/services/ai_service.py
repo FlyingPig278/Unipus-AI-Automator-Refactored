@@ -1,18 +1,20 @@
 # src/services/ai_service.py
-import whisper
-import re
-import json
-import requests
-import tempfile
-import os
 import asyncio
+import json
+import os
 import subprocess
+import tempfile
+import uuid  # 新增导入
 from pathlib import Path
-import uuid # 新增导入
+
+import requests
+import whisper
 from openai import OpenAI
 from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam
+
 import src.config as config
 from src import prompts
+
 
 class LocalTTSEngine:
     """
