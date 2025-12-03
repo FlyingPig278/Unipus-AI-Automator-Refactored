@@ -3,6 +3,7 @@ from src.services.driver_service import DriverService
 from src.services.ai_service import AIService
 from src.services.cache_service import CacheService
 from playwright.async_api import Error as PlaywrightError
+from src.utils import logger
 
 class UnsupportedImageStrategy(BaseStrategy):
     """
@@ -24,19 +25,15 @@ class UnsupportedImageStrategy(BaseStrategy):
             # 使用用户提供的选择器来定位图片容器
             image_container_locator = driver_service.page.locator("div.html_image_list[data-type='options_images_tmls']")
             if await image_container_locator.count() > 0:
-                print("检测到图片依赖型题目（如词云），此题目无法由AI解答。")
+                logger.warning("检测到图片依赖型题目（如词云），此题目无法由AI解答。") # Changed to warning
                 return True
         except PlaywrightError:
             return False
         return False
 
     async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> bool:
-        """
-        执行跳过逻辑：打印通知并返回False，以中止当前任务。
-        """
-        print("=" * 20)
-        print("执行“跳过图片题”策略...")
-        print("AI无法处理基于图片的题目，将中止当前任务以跳过。")
-        print("=" * 20)
-        # 返回False，向主循环表明此任务不应继续或提交。
+        logger.always_print("=" * 20)
+        logger.always_print("执行“跳过图片题”策略...")
+        logger.always_print("AI无法处理基于图片的题目，将中止当前任务以跳过。")
+        logger.always_print("=" * 20)
         return False

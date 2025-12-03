@@ -6,6 +6,7 @@ from src.strategies.base_strategy import BaseStrategy
 from src.services.driver_service import DriverService
 from src.services.ai_service import AIService
 from src.services.cache_service import CacheService
+from src.utils import logger
 
 class DragAndDropStrategy(BaseStrategy):
     """
@@ -24,66 +25,58 @@ class DragAndDropStrategy(BaseStrategy):
         try:
             is_visible = await driver_service.page.locator("div#sortableListWrapper").first.is_visible(timeout=2000)
             if is_visible:
-                print("检测到拖拽排序题，应用JS调用策略。")
+                logger.info("检测到拖拽排序题，应用JS调用策略。")
                 return True
         except PlaywrightError:
             return False
         return False
 
     async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> bool:
-        """执行拖拽题的JS函数调用逻辑，根据is_chained_task标志决定是否使用缓存。
-        返回 True 表示成功完成（不包括提交，如果is_chained_task为True），
-        返回 False 表示因故提前终止（如用户取消，内部错误等）。
-        """
-        print("=" * 20)
-        print("开始执行拖拽题策略 (JS函数调用模式)...")
+        logger.info("=" * 20)
+        logger.info("开始执行拖拽题策略 (JS函数调用模式)...")
 
         try:
             breadcrumb_parts = await self.driver_service.get_breadcrumb_parts()
             if not breadcrumb_parts:
-                raise Exception("无法获取页面面包屑，终止策略。") # 这里会通过外层main.py捕获
+                raise Exception("无法获取页面面包屑，终止策略。")
 
             cache_write_needed = False
             target_order = []
             use_cache = False
 
-            # 1. 检查缓存（仅当不是“题中题”模式时）
             if not is_chained_task:
                 task_page_cache = self.cache_service.get_task_page_cache(breadcrumb_parts)
                 if not config.FORCE_AI and task_page_cache and task_page_cache.get('type') == self.strategy_type and task_page_cache.get('answers'):
-                    print("在缓存中找到此页面的答案。")
+                    logger.info("在缓存中找到此页面的答案。")
                     target_order = task_page_cache['answers']
                     use_cache = True
                 elif config.FORCE_AI and task_page_cache:
-                    print("FORCE_AI为True，强制忽略缓存，调用AI。")
+                    logger.info("FORCE_AI为True，强制忽略缓存，调用AI。")
             
-            # 2. 如果缓存未命中，则调用AI
             if not target_order:
                 if is_chained_task:
-                    print("处于“题中题”模式，跳过缓存，直接调用AI。")
+                    logger.info("处于“题中题”模式，跳过缓存，直接调用AI。")
                 else:
-                    print("缓存未命中，将调用AI进行解答...")
+                    logger.info("缓存未命中，将调用AI进行解答...")
                 
-                cache_write_needed = not is_chained_task # 只有在非题中题模式下才写真正的缓存
+                cache_write_needed = not is_chained_task
                 
-                # 使用 asyncio.gather 并发执行所有独立的异步信息提取任务
-                print("正在并发提取媒体、材料等信息...")
+                logger.info("正在并发提取媒体、材料等信息...")
                 tasks = [
                     self._get_media_transcript(),
                     self.driver_service._extract_additional_material_for_ai()
                 ]
                 results = await asyncio.gather(*tasks)
                 transcript, additional_material = results
-                print("信息提取完毕。")
+                logger.info("信息提取完毕。")
                 
-                # 将共享上下文和本地上下文结合
                 full_context = f"{shared_context}\n{transcript}\n{additional_material}".strip()
 
                 options_locators = await self.driver_service.page.locator("div.sequence-reply-view-item-text").all()
                 options_text_list = [await loc.text_content() for loc in options_locators]
                 options_text_for_ai = "\n".join([f"- {opt.strip()}" for opt in options_text_list])
 
-                print(f"提取到 {len(options_text_list)} 个待排序选项。")
+                logger.info(f"提取到 {len(options_text_list)} 个待排序选项。")
 
                 prompt = prompts.DRAG_AND_DROP_PROMPT.format(
                     media_transcript=full_context,
@@ -91,33 +84,31 @@ class DragAndDropStrategy(BaseStrategy):
                 )
 
                 if not config.IS_AUTO_MODE:
-                    print("=" * 50)
-                    print("即将发送给 AI 的完整 Prompt 如下：")
-                    print(prompt)
-                    print("=" * 50)
+                    logger.info("=" * 50)
+                    logger.info("即将发送给 AI 的完整 Prompt 如下：")
+                    logger.info(prompt)
+                    logger.info("=" * 50)
                 
                 if not (config.IS_AUTO_MODE and config.AUTO_MODE_NO_CONFIRM):
                     confirm = await asyncio.to_thread(input, "是否确认发送此 Prompt？[Y/n]: ")
                     if confirm.strip().upper() not in ["Y", ""]:
-                        print("用户取消了 AI 调用，终止当前任务。")
+                        logger.warning("用户取消了 AI 调用，终止当前任务。")
                         return False
 
-                print("正在请求AI获取正确顺序...")
+                logger.info("正在请求AI获取正确顺序...")
                 ai_response = self.ai_service.get_chat_completion(prompt)
                 if not ai_response or "ordered_options" not in ai_response:
-                    print("未能从AI获取有效的排序结果。")
+                    logger.error("未能从AI获取有效的排序结果。")
                     return False
                 
                 target_order = ai_response["ordered_options"]
-                print(f"AI返回的正确顺序: {', '.join(target_order)}")
+                logger.info(f"AI返回的正确顺序: {', '.join(target_order)}")
             
-            # 3. 准备并执行JS代码
             js_code = self._get_js_to_execute(target_order)
-            print("正在页面中执行JS以更新题目顺序...")
+            logger.info("正在页面中执行JS以更新题目顺序...")
             await self.driver_service.page.evaluate(js_code)
-            print("JS代码执行完毕，UI应已更新。")
+            logger.success("JS代码执行完毕，UI应已更新。")
 
-            # 4. 提交答案 (仅当不是“题中题”模式时)
             if not is_chained_task:
                 should_submit = True
                 if not (config.IS_AUTO_MODE and config.AUTO_MODE_NO_CONFIRM):
@@ -127,33 +118,31 @@ class DragAndDropStrategy(BaseStrategy):
 
                 if should_submit:
                     await self.driver_service.page.click(".btn")
-                    print("答案已提交。正在处理最终确认弹窗...")
+                    logger.info("答案已提交。正在处理最终确认弹窗...")
                     await self.driver_service.handle_submission_confirmation()
 
                     if cache_write_needed:
-                        print("准备从解析页面提取正确答案并写入缓存...")
+                        logger.info("准备从解析页面提取正确答案并写入缓存...")
                         await self._write_answers_to_cache(breadcrumb_parts)
-                    return True # 提交成功
+                    return True
                 else:
-                    print("用户取消提交。")
-                    return False # 用户取消提交
+                    logger.warning("用户取消提交。")
+                    return False
             else:
-                return True # 在题中题模式下，填写成功即视为成功
+                return True
 
         except Exception as e:
-            print(f"执行拖拽题策略时发生错误: {e}")
-            return False # 发生错误，返回失败
+            logger.error(f"执行拖拽题策略时发生错误: {e}")
+            return False
 
     async def _get_media_transcript(self) -> str:
-        """尝试转录页面上的视频或音频以获取上下文。"""
         media_url, media_type = await self.driver_service.get_media_source_and_type()
         if media_url:
-            print(f"发现 {media_type} 文件，准备转写...")
+            logger.info(f"发现 {media_type} 文件，准备转写...")
             return self.ai_service.transcribe_media_from_url(media_url)
         return "无"
 
     def _get_js_to_execute(self, target_order: list[str]) -> str:
-        """生成最终要在page.evaluate中执行的JS代码字符串。"""
         target_order_js_array = json.dumps(target_order)
         return f"""
         (function solveWithCapturedPayload() {{
@@ -196,13 +185,12 @@ class DragAndDropStrategy(BaseStrategy):
         """
 
     async def _write_answers_to_cache(self, breadcrumb_parts: list[str]):
-        """导航到答案解析页面，提取正确答案，并写入缓存。"""
         try:
             await self.driver_service._navigate_to_answer_analysis_page()
             correct_answers_list = await self.driver_service.extract_all_correct_answers_from_analysis_page()
 
             if not correct_answers_list:
-                print("警告：未能从解析页面提取到任何答案，无法更新缓存。" )
+                logger.warning("未能从解析页面提取到任何答案，无法更新缓存。" )
                 return
             
             self.cache_service.save_task_page_answers(
@@ -211,9 +199,8 @@ class DragAndDropStrategy(BaseStrategy):
                 correct_answers_list
             )
         except Exception as e:
-            print(f"写入缓存过程中发生错误: {e}")
+            logger.error(f"写入缓存过程中发生错误: {e}")
 
     async def close(self):
-        """此策略不管理需要关闭的资源。"""
         pass
 			
