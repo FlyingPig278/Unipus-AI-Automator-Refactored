@@ -115,8 +115,8 @@ FILL_IN_THE_BLANK_PROMPT = """
 {question_text}
 """
 
-SHORT_ANSWER_PROMPT = """
-你是一个用于解答U校园英语题的AI助手。请根据以下提供的上下文信息（包括题目说明、文章或听力原文）和一系列子问题，为每一个子问题生成一个简洁明了的英文回答。
+# 提示词：处理简答题（Short Answer Questions）
+SHORT_ANSWER_PROMPT = """你是一个用于解答U校园英语题的AI助手。请根据以下提供的上下文信息（包括题目说明、文章或听力原文）和一系列子问题，为每一个子问题生成一个简洁明了的英文回答。
 
 请将你的所有回答以一个JSON对象的形式返回，该对象包含一个名为 "answers" 的数组，数组中的每个字符串都应对应一个子问题的答案。
 
@@ -133,11 +133,31 @@ JSON格式如下:
 【题目说明】:
 {direction_text}
 
-【文章或听力原文内容】:
 {article_text}
-
 【子问题列表】:
 {sub_questions}
+"""
+
+# 新增：提示词：处理在表格中的简答题
+TABLE_SHORT_ANSWER_PROMPT = """你是一个用于解答U校园英语题的AI助手。请根据以下提供的上下文信息，特别是表格内容，为每一个[Blank X]生成一个简洁明了的英文回答。
+你需要理解表格的结构，通常每一行是一个问题，每一列是一个对象（如Student 1, Student 2），[Blank X]是它们的交叉点。你的回答需要符合对应的问题和对象。
+
+请将你的所有回答以一个JSON对象的形式返回，该对象包含一个名为 "answers" 的数组，数组中的每个字符串都应对应一个[Blank X]的答案，并严格按照[Blank 1], [Blank 2], ... [Blank 9]的顺序排列。
+
+JSON格式如下:
+{{
+  "answers": [
+    "Answer for [Blank 1]",
+    "Answer for [Blank 2]",
+    "..."
+  ]
+}}
+
+---
+【题目说明】:
+{direction_text}
+
+{article_text}
 """
 
 QAVOICE_PROMPT = """

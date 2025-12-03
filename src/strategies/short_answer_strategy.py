@@ -50,23 +50,34 @@ class ShortAnswerStrategy(BaseStrategy):
             # 将共享上下文和本地上下文结合
             full_context = f"{shared_context}\n{article_text}\n{additional_material}".strip()
             
-            # 2. 提取所有子问题
-            question_containers = await self.driver_service.page.locator(".question-inputbox").all()
-            sub_questions = []
-            for container in question_containers:
-                sub_q_text = await container.locator(".question-inputbox-header .component-htmlview").text_content()
-                sub_questions.append(sub_q_text.strip())
-            
-            sub_questions_text = "\n".join([f"{i+1}. {q}" for i, q in enumerate(sub_questions)])
-            print(f"提取到 {len(sub_questions)} 个简答题:\n{sub_questions_text}")
+            # 检查是否为表格题型
+            is_table_question = "|:---:" in additional_material
 
-            # 3. 构建Prompt并调用AI
-            article_section = f"以下是文章或听力原文内容:\n{full_context}\n\n" if full_context else ""
-            prompt = prompts.SHORT_ANSWER_PROMPT.format(
-                direction_text=direction_text,
-                article_text=article_section,
-                sub_questions=sub_questions_text
-            )
+            if is_table_question:
+                print("检测到表格题型，使用专用的表格Prompt。")
+                prompt = prompts.TABLE_SHORT_ANSWER_PROMPT.format(
+                    direction_text=direction_text,
+                    article_text=full_context
+                )
+            else:
+                print("使用标准简答题Prompt。")
+                # 2. 提取所有子问题
+                question_containers = await self.driver_service.page.locator(".question-inputbox").all()
+                sub_questions = []
+                for container in question_containers:
+                    sub_q_text = await container.locator(".question-inputbox-header .component-htmlview").text_content()
+                    sub_questions.append(sub_q_text.strip())
+                
+                sub_questions_text = "\n".join([f"{i+1}. {q}" for i, q in enumerate(sub_questions)])
+                print(f"提取到 {len(sub_questions)} 个简答题:\n{sub_questions_text}")
+
+                # 3. 构建Prompt
+                article_section = f"以下是文章或听力原文内容:\n{full_context}\n\n" if full_context else ""
+                prompt = prompts.SHORT_ANSWER_PROMPT.format(
+                    direction_text=direction_text,
+                    article_text=article_section,
+                    sub_questions=sub_questions_text
+                )
 
             print("=" * 50)
             print("即将发送给 AI 的完整 Prompt 如下：")

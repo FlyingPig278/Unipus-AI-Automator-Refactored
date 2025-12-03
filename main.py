@@ -13,12 +13,14 @@ from src.strategies.fill_in_the_blank_strategy import FillInTheBlankStrategy
 from src.strategies.role_play_strategy import RolePlayStrategy
 from src.strategies.short_answer_strategy import ShortAnswerStrategy
 from src.strategies.qa_voice_strategy import QAVoiceStrategy
+from src.strategies.unsupported_image_strategy import UnsupportedImageStrategy
 
 # ==============================================================================
 # 全局可用策略列表
 # 策略的顺序很重要，会按照从上到下的顺序进行检查。
 # ==============================================================================
 AVAILABLE_STRATEGIES = [
+    UnsupportedImageStrategy,   # 【防御性策略】必须置顶，用于跳过无法解答的图片题
     RolePlayStrategy,           # 角色扮演对话题
     ReadAloudStrategy,          # 文字朗读题
     QAVoiceStrategy,            # 语音简答题
