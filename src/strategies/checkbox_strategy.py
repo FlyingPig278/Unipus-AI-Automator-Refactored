@@ -28,9 +28,10 @@ class CheckboxStrategy(BaseStrategy):
             return False
         return False
 
-    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> None:
+    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> bool:
         """
         执行自检打钩逻辑：循环查找第一个未打钩的项并点击，直到全部完成。
+        返回 True 表示成功完成，False 表示因故提前终止。
         """
         print("=" * 20)
         print("开始执行自检打钩策略...")
@@ -42,7 +43,7 @@ class CheckboxStrategy(BaseStrategy):
             initial_count = await self.driver_service.page.locator(unchecked_boxes_selector).count()
             if initial_count == 0:
                 print("没有检测到未打钩的项，可能已经全部完成。")
-                return
+                return True # 没有需要点击的，视为成功
             
             print(f"发现 {initial_count} 个未打钩的项，正在逐一点击...")
             clicked_count = 0
@@ -57,6 +58,8 @@ class CheckboxStrategy(BaseStrategy):
                 await asyncio.sleep(0.5)
 
             print(f"✅ 所有 {clicked_count} 个未打钩项已全部点击完毕。")
+            return True # 成功完成所有点击
 
         except Exception as e:
             print(f"执行自检打钩策略时发生错误: {e}")
+            return False # 发生错误，返回失败

@@ -28,7 +28,7 @@ class DiscussionStrategy(BaseStrategy):
             return False
         return False
 
-    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> None:
+    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> bool:
         """执行讨论题的解题逻辑。"""
         print("=" * 20)
         print("开始执行讨论题策略...")
@@ -61,7 +61,7 @@ class DiscussionStrategy(BaseStrategy):
             confirm = await asyncio.to_thread(input, "是否确认发送此 Prompt？[Y/n]: ")
             if confirm.strip().upper() not in ["Y", ""]:
                 print("用户取消了 AI 调用，终止当前任务。")
-                return
+                return False
 
             print("正在请求AI生成评论...")
             ai_response = self.ai_service.get_chat_completion(prompt)
@@ -69,12 +69,12 @@ class DiscussionStrategy(BaseStrategy):
             # 4. 验证并格式化AI回答
             if not ai_response or "answers" not in ai_response or not isinstance(ai_response["answers"], list):
                 print("未能从AI获取有效的答案列表，终止执行。")
-                return
+                return False
             
             ai_answers = ai_response["answers"]
             if len(ai_answers) != len(sub_questions):
                 print(f"警告：AI返回了 {len(ai_answers)} 个答案，但我们提取了 {len(sub_questions)} 个问题，终止执行。")
-                return
+                return False
             
             # 由Python代码负责格式化
             final_comment = ""
@@ -99,9 +99,12 @@ class DiscussionStrategy(BaseStrategy):
                 print("✅ 评论已发布。")
                 
                 await asyncio.sleep(2) # 发布后等待一下
+            
+            return True # 成功完成所有操作
 
         except Exception as e:
             print(f"执行讨论题策略时发生错误: {e}")
+            return False
 
     async def close(self):
         pass # 本策略不涉及需要关闭的资源

@@ -107,7 +107,6 @@ class DriverService:
         scope = search_scope if search_scope else self.page
         try:
             media_locator = scope.locator(config.MEDIA_SOURCE_ELEMENTS).first
-            await media_locator.wait_for(state="visible", timeout=1000) # 短暂等待以确保元素加载
             url = await media_locator.get_attribute('src')
             tag_name = await media_locator.evaluate('element => element.tagName.toLowerCase()')
             return url, tag_name

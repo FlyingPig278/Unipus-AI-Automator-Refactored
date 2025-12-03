@@ -26,13 +26,11 @@ class BaseStrategy(ABC):
         pass
 
     @abstractmethod
-    def execute(self, shared_context: str = "", is_chained_task: bool = False) -> None:
+    def execute(self, shared_context: str = "", is_chained_task: bool = False) -> bool:
         """
-        执行本策略的核心逻辑，包括：
-        1. 从页面提取题目信息。
-        2. 构建并发送Prompt给AI服务。
-        3. 解析AI返回的答案。
-        4. 将答案填入网页并提交。
+        执行本策略的核心逻辑。
+        返回 True 表示成功完成（不包括提交，如果is_chained_task为True），
+        返回 False 表示因故提前终止（如用户取消，内部错误等）。
         """
         pass
 

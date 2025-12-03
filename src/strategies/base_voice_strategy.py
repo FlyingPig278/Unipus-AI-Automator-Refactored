@@ -32,7 +32,7 @@ class BaseVoiceStrategy(BaseStrategy, ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def execute(self, shared_context: str = "", is_chained_task: bool = False) -> None:
+    def execute(self, shared_context: str = "", is_chained_task: bool = False) -> bool:
         """执行策略的入口。"""
         raise NotImplementedError
 

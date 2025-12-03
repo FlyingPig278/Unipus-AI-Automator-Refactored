@@ -1,4 +1,6 @@
 import asyncio
+import re
+import html
 from playwright.async_api import Error as PlaywrightError
 
 from src import prompts, config
@@ -32,10 +34,29 @@ class MultipleChoiceStrategy(BaseStrategy):
            return False
 
     async def _get_full_question_text_for_ai(self, question_wrap_locator) -> str:
-        """从题目区块中提取完整的题目和选项文本。"""
-        return await question_wrap_locator.text_content()
+        """从题目区块中提取完整的题目和选项文本，并处理下划线。"""
+        title = await question_wrap_locator.locator(".ques-title").text_content()
+        
+        options_text_parts = []
+        option_locators = await question_wrap_locator.locator(".option").all()
+        for opt_loc in option_locators:
+            caption = await opt_loc.locator(".caption").text_content()
+            content_html = await opt_loc.locator(".content").inner_html()
+            
+            # 使用正则表达式处理下划线
+            processed_content = re.sub(r'<span style="text-decoration: underline;">(.*?)</span>', r'*\1*', content_html, flags=re.IGNORECASE | re.DOTALL)
+            processed_content = re.sub(r'<u>(.*?)</u>', r'*\1*', processed_content, flags=re.IGNORECASE | re.DOTALL)
+            
+            # 剥离所有剩余HTML标签并解码HTML实体
+            processed_content = re.sub(r'<.*?>', '', processed_content)
+            processed_content = html.unescape(processed_content)
+            
+            options_text_parts.append(f"{caption.strip()}. {processed_content.strip()}")
+        
+        options_text = "\n".join(options_text_parts)
+        return f"{title.strip()}\n{options_text}"
 
-    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> None:
+    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> bool:
         """执行多选题的解题逻辑，根据is_chained_task标志决定是否使用缓存。"""
         print("="*20)
         print("开始执行多选题策略...")
@@ -45,10 +66,10 @@ class MultipleChoiceStrategy(BaseStrategy):
             question_locator = self.driver_service.page.locator("div.question-common-abs-choice.multipleChoice").first
             if not breadcrumb_parts or not await question_locator.is_visible():
                 print("错误：无法获取页面关键信息（面包屑或题目），终止策略。")
-                return
+                return False
         except Exception as e:
             print(f"提取面包屑或题目容器时出错: {e}")
-            return
+            return False
 
         cache_write_needed = False
         answers_to_fill = [] # 这将是一个 list[str]，例如 ['A', 'C']
@@ -59,13 +80,13 @@ class MultipleChoiceStrategy(BaseStrategy):
             task_page_cache = self.cache_service.get_task_page_cache(breadcrumb_parts)
             if not config.FORCE_AI and task_page_cache and task_page_cache.get('type') == self.strategy_type and task_page_cache.get('answers'):
                 print("在缓存中找到此页面的答案。")
-                target_order = task_page_cache['answers']
+                answers_to_fill = task_page_cache['answers']
                 use_cache = True
             elif config.FORCE_AI and task_page_cache:
                 print("FORCE_AI为True，强制忽略缓存，调用AI。")
         
         # 2. 如果缓存未命中，则调用AI
-        if not answers_to_fill:
+        if not use_cache:
             if is_chained_task:
                 print("处于“题中题”模式，跳过缓存，直接调用AI。")
             else:
@@ -97,18 +118,18 @@ class MultipleChoiceStrategy(BaseStrategy):
             confirm = await asyncio.to_thread(input, "是否确认发送此 Prompt？[Y/n]: ")
             if confirm.strip().upper() not in ["Y", ""]:
                 print("用户取消了 AI 调用，终止当前任务。")
-                return
+                return False
             
             json_data = self.ai_service.get_chat_completion(prompt)
             if not json_data or "questions" not in json_data or not json_data["questions"]:
                 print("未能从AI获取有效答案，终止执行。")
-                return
+                return False
 
             print(f"AI回答: {json_data}")
             # AI为单个题目返回一个答案列表
             answers_to_fill = [str(char).upper() for char in json_data["questions"][0].get("answer", [])]
 
-        await self._fill_and_submit(answers_to_fill, cache_write_needed, breadcrumb_parts, is_chained_task=is_chained_task)
+        return await self._fill_and_submit(answers_to_fill, cache_write_needed, breadcrumb_parts, is_chained_task=is_chained_task)
 
     async def _get_article_text(self) -> str:
         """提取文章或听力原文（音频或视频）。"""
@@ -134,7 +155,7 @@ class MultipleChoiceStrategy(BaseStrategy):
             print("未找到题目说明（Direction）。")
             return ""
 
-    async def _fill_and_submit(self, answers: list[str], cache_write_needed: bool, breadcrumb_parts: list[str], is_chained_task: bool = False):
+    async def _fill_and_submit(self, answers: list[str], cache_write_needed: bool, breadcrumb_parts: list[str], is_chained_task: bool = False) -> bool:
         """将答案填入网页。如果不是“题中题”模式，则同时处理提交。"""
         try:
             print("正在解析并预验证答案...")
@@ -142,12 +163,17 @@ class MultipleChoiceStrategy(BaseStrategy):
             option_wrap_locator = self.driver_service.page.locator("div.question-common-abs-choice.multipleChoice .option-wrap").first
 
             options_count = await option_wrap_locator.locator(".option").count()
-            # answers 现在直接是 list[str]，无需再循环外层
-            for answer_char in answers: # 遍历答案中的每个选项，例如 ['A', 'C']
+            
+            is_valid = True
+            for answer_char in answers: 
                 answer_index = ord(answer_char) - ord("A")
                 if not (0 <= answer_index < options_count):
                     print(f"错误：答案 '{answer_char}' 无效，已终止作答。")
-                    return
+                    is_valid = False
+                    break
+            
+            if not is_valid:
+                return False
 
             print("预验证通过，开始填写答案...")
             for answer_char in answers:
@@ -169,11 +195,16 @@ class MultipleChoiceStrategy(BaseStrategy):
                     if cache_write_needed:
                         print("准备从解析页面提取正确答案并写入缓存...")
                         await self._write_answers_to_cache(breadcrumb_parts)
+                    return True
                 else:
                     print("用户取消提交。")
+                    return False
+            else:
+                return True
 
         except Exception as e:
             print(f"填写或提交答案时出错: {e}")
+            return False
 
     async def _write_answers_to_cache(self, breadcrumb_parts: list[str]):
         """导航到答案解析页面，提取正确答案，并写入缓存。"""

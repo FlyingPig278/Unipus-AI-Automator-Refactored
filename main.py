@@ -76,7 +76,10 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
                 
                 if current_strategy:
                     try:
-                        await current_strategy.execute(shared_context=shared_context, is_chained_task=True)
+                        succeeded = await current_strategy.execute(shared_context=shared_context, is_chained_task=True)
+                        if not succeeded:
+                            print(f"策略 {current_strategy.__class__.__name__} 执行提前终止，任务链中断。")
+                            break # 策略执行失败或被取消，终止循环
                     except Exception as e:
                         print(f"策略 {current_strategy.__class__.__name__} 执行时发生错误，终止当前任务链: {e}")
                         break # 发生错误，立即终止循环

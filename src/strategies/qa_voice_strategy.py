@@ -48,7 +48,7 @@ class QAVoiceStrategy(BaseVoiceStrategy):
             return False
         return False
 
-    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> None:
+    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> bool:
         """
         执行语音简答题的回答流程。
         包含一个特殊逻辑：如果检测到题目指示需要前文，则会自动导航到Activity 1获取文章，然后再返回作答。
@@ -98,7 +98,7 @@ class QAVoiceStrategy(BaseVoiceStrategy):
 
             except Exception as e:
                 print(f"在返回获取文章的过程中发生严重错误，将中止任务: {e}")
-                return
+                return False
         
         # 2. 页面级别的额外材料 (在循环外，因为通常对整个页面有效)
         additional_material = await self.driver_service._extract_additional_material_for_ai()
@@ -182,7 +182,7 @@ class QAVoiceStrategy(BaseVoiceStrategy):
 
         if should_abort_page:
             print("由于发生错误或分数不达标，已中止最终提交。")
-            return
+            return False
 
         # 如果不是“题中题”的一部分，则执行提交流程
         if not is_chained_task:
@@ -191,6 +191,11 @@ class QAVoiceStrategy(BaseVoiceStrategy):
                 await self.driver_service.page.click(".btn")
                 print("答案已提交。正在处理最终确认弹窗...")
                 await self.driver_service.handle_submission_confirmation()
+            else:
+                print("用户取消提交。")
+                return False
+        
+        return True # 所有操作成功完成
 
     async def _get_article_text(self, container: Locator | None = None) -> str:
         """

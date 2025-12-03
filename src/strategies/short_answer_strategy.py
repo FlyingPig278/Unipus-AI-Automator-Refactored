@@ -28,7 +28,7 @@ class ShortAnswerStrategy(BaseStrategy):
             return False
         return False
 
-    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> None:
+    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> bool:
         """执行简答题的解题逻辑。"""
         print("="*20)
         print("开始执行简答题策略...")
@@ -69,20 +69,22 @@ class ShortAnswerStrategy(BaseStrategy):
             confirm = await asyncio.to_thread(input, "是否确认发送此 Prompt？[Y/n]: ")
             if confirm.strip().upper() not in ["Y", ""]:
                 print("用户取消了 AI 调用，终止当前任务。")
-                return
+                return False
             
             json_data = self.ai_service.get_chat_completion(prompt)
             if not json_data or "answers" not in json_data or not isinstance(json_data["answers"], list):
-                raise Exception("未能从AI获取有效的答案列表。")
+                print("未能从AI获取有效的答案列表。")
+                return False
 
             answers_to_fill = json_data["answers"]
             print(f"AI已生成 {len(answers_to_fill)} 个回答。")
 
             # 4. 填写并提交
-            await self._fill_and_submit(answers_to_fill, is_chained_task=is_chained_task)
+            return await self._fill_and_submit(answers_to_fill, is_chained_task=is_chained_task)
 
         except Exception as e:
             print(f"执行简答题策略时发生错误: {e}")
+            return False
 
     async def _get_article_text(self) -> str:
         """提取文章或听力原文。"""
@@ -106,32 +108,40 @@ class ShortAnswerStrategy(BaseStrategy):
         except Exception:
             return ""
 
-    async def _fill_and_submit(self, answers: list[str], is_chained_task: bool = False):
+    async def _fill_and_submit(self, answers: list[str], is_chained_task: bool = False) -> bool:
         """将答案填入所有文本框并提交。"""
-        textarea_locators = await self.driver_service.page.locator("textarea.question-inputbox-input").all()
+        try:
+            textarea_locators = await self.driver_service.page.locator("textarea.question-inputbox-input").all()
 
-        if len(answers) != len(textarea_locators):
-            print(f"错误：AI返回的答案数量 ({len(answers)}) 与页面输入框数量 ({len(textarea_locators)}) 不匹配，终止作答。")
-            return
+            if len(answers) != len(textarea_locators):
+                print(f"错误：AI返回的答案数量 ({len(answers)}) 与页面输入框数量 ({len(textarea_locators)}) 不匹配，终止作答。")
+                return False
 
-        print("开始填写答案...")
-        for i, textarea_locator in enumerate(textarea_locators):
-            answer_text = answers[i]
-            print(f"第 {i+1} 题，填入: '{answer_text[:50]}...'")
-            await textarea_locator.fill(answer_text)
-            await asyncio.sleep(0.2)
+            print("开始填写答案...")
+            for i, textarea_locator in enumerate(textarea_locators):
+                answer_text = answers[i]
+                print(f"第 {i+1} 题，填入: '{answer_text[:50]}...'")
+                await textarea_locator.fill(answer_text)
+                await asyncio.sleep(0.2)
 
-        print("答案填写完毕。")
+            print("答案填写完毕。")
 
-        # 如果不是“题中题”的一部分，则执行提交流程
-        if not is_chained_task:
-            confirm = await asyncio.to_thread(input, "AI已填写答案。是否确认提交？[Y/n]: ")
-            if confirm.strip().upper() in ["Y", ""]:
-                await self.driver_service.page.click(".btn")
-                print("答案已提交。正在处理最终确认弹窗...")
-                await self.driver_service.handle_submission_confirmation()
+            # 如果不是“题中题”的一部分，则执行提交流程
+            if not is_chained_task:
+                confirm = await asyncio.to_thread(input, "AI已填写答案。是否确认提交？[Y/n]: ")
+                if confirm.strip().upper() in ["Y", ""]:
+                    await self.driver_service.page.click(".btn")
+                    print("答案已提交。正在处理最终确认弹窗...")
+                    await self.driver_service.handle_submission_confirmation()
+                    return True
+                else:
+                    print("用户取消提交。")
+                    return False
             else:
-                print("用户取消提交。")
+                return True
+        except Exception as e:
+            print(f"填写或提交答案时出错: {e}")
+            return False
 
     async def close(self) -> None:
         pass

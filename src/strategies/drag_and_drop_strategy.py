@@ -30,15 +30,18 @@ class DragAndDropStrategy(BaseStrategy):
             return False
         return False
 
-    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> None:
-        """执行拖拽题的JS函数调用逻辑，根据is_chained_task标志决定是否使用缓存。"""
+    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> bool:
+        """执行拖拽题的JS函数调用逻辑，根据is_chained_task标志决定是否使用缓存。
+        返回 True 表示成功完成（不包括提交，如果is_chained_task为True），
+        返回 False 表示因故提前终止（如用户取消，内部错误等）。
+        """
         print("=" * 20)
         print("开始执行拖拽题策略 (JS函数调用模式)...")
 
         try:
             breadcrumb_parts = await self.driver_service.get_breadcrumb_parts()
             if not breadcrumb_parts:
-                raise Exception("无法获取页面面包屑，终止策略。")
+                raise Exception("无法获取页面面包屑，终止策略。") # 这里会通过外层main.py捕获
 
             cache_write_needed = False
             target_order = []
@@ -88,12 +91,13 @@ class DragAndDropStrategy(BaseStrategy):
                 confirm = await asyncio.to_thread(input, "是否确认发送此 Prompt？[Y/n]: ")
                 if confirm.strip().upper() not in ["Y", ""]:
                     print("用户取消了 AI 调用，终止当前任务。")
-                    return
+                    return False
 
                 print("正在请求AI获取正确顺序...")
                 ai_response = self.ai_service.get_chat_completion(prompt)
                 if not ai_response or "ordered_options" not in ai_response:
-                    raise Exception("未能从AI获取有效的排序结果。")
+                    print("未能从AI获取有效的排序结果。")
+                    return False
                 
                 target_order = ai_response["ordered_options"]
                 print(f"AI返回的正确顺序: {', '.join(target_order)}")
@@ -115,11 +119,16 @@ class DragAndDropStrategy(BaseStrategy):
                     if cache_write_needed:
                         print("准备从解析页面提取正确答案并写入缓存...")
                         await self._write_answers_to_cache(breadcrumb_parts)
+                    return True # 提交成功
                 else:
                     print("用户取消提交。")
+                    return False # 用户取消提交
+            else:
+                return True # 在题中题模式下，填写成功即视为成功
 
         except Exception as e:
             print(f"执行拖拽题策略时发生错误: {e}")
+            return False # 发生错误，返回失败
 
     async def _get_media_transcript(self) -> str:
         """尝试转录页面上的视频或音频以获取上下文。"""

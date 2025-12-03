@@ -35,8 +35,11 @@ class SingleChoiceStrategy(BaseStrategy):
        except PlaywrightError:
            return False
 
-    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> None:
-        """执行单选题的解题逻辑，根据is_chained_task标志决定是否使用缓存。"""
+    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> bool:
+        """执行单选题的解题逻辑，根据is_chained_task标志决定是否使用缓存。
+        返回 True 表示成功完成（不包括提交，如果is_chained_task为True），
+        返回 False 表示因故提前终止（如用户取消，内部错误等）。
+        """
         print("="*20)
         print("开始执行单选题策略...")
 
@@ -45,10 +48,10 @@ class SingleChoiceStrategy(BaseStrategy):
             original_question_locators = await self.driver_service.page.locator(".question-common-abs-reply").all()
             if not breadcrumb_parts or not original_question_locators:
                 print("错误：无法获取页面关键信息（面包屑或题目），终止策略。")
-                return
+                return False
         except Exception as e:
             print(f"提取面包屑或题目容器时出错: {e}")
-            return
+            return False
 
         cache_write_needed = False
         answers_to_fill = []
@@ -129,18 +132,18 @@ class SingleChoiceStrategy(BaseStrategy):
             confirm = await asyncio.to_thread(input, "是否确认发送此 Prompt？[Y/n]: ")
             if confirm.strip().upper() not in ["Y", ""]:
                 print("用户取消了 AI 调用，终止当前任务。")
-                return
+                return False
             
             json_data = self.ai_service.get_chat_completion(prompt)
             if not json_data or "questions" not in json_data:
                 print("未能从AI获取有效答案，终止执行。")
-                return
+                return False
 
             print(f"AI回答: {json_data}")
             answers_to_fill = [str(item["answer"]).upper() for item in json_data.get("questions", []) if "answer" in item]
 
         # 3. 统一执行填写和提交流程
-        await self._fill_and_submit(answers_to_fill, cache_write_needed, breadcrumb_parts, is_chained_task=is_chained_task)
+        return await self._fill_and_submit(answers_to_fill, cache_write_needed, breadcrumb_parts, is_chained_task=is_chained_task)
 
     async def _get_article_text(self) -> str:
         """提取文章或听力原文（音频或视频）。"""
@@ -166,7 +169,7 @@ class SingleChoiceStrategy(BaseStrategy):
             print("未找到题目说明（Direction）。")
             return ""
 
-    async def _fill_and_submit(self, answers: list[str], cache_write_needed: bool, breadcrumb_parts: list[str], is_chained_task: bool = False):
+    async def _fill_and_submit(self, answers: list[str], cache_write_needed: bool, breadcrumb_parts: list[str], is_chained_task: bool = False) -> bool:
         """将答案填入网页。如果不是“题中题”模式，则同时处理提交。"""
         try:
             print("正在解析并预验证答案...")
@@ -174,7 +177,7 @@ class SingleChoiceStrategy(BaseStrategy):
 
             if len(answers) != len(option_wraps_locators):
                 print(f"错误：收到的答案数量 ({len(answers)}) 与页面题目数量 ({len(option_wraps_locators)}) 不匹配，为避免错位，已终止此题作答。")
-                return
+                return False
 
             is_valid = True
             for i, option_wrap_locator in enumerate(option_wraps_locators):
@@ -187,7 +190,7 @@ class SingleChoiceStrategy(BaseStrategy):
                    break
 
             if not is_valid:
-               return
+               return False
 
             print("预验证通过，开始填写答案...")
             for i, option_wrap_locator in enumerate(option_wraps_locators):
@@ -208,11 +211,17 @@ class SingleChoiceStrategy(BaseStrategy):
                     if cache_write_needed:
                         print("准备从解析页面提取正确答案并写入缓存...")
                         await self._write_answers_to_cache(breadcrumb_parts)
+                    return True # 提交成功
                 else:
                     print("用户取消提交。")
+                    return False # 用户取消
+            else:
+                # 在题中题模式下，填写成功即视为成功
+                return True
 
         except Exception as e:
             print(f"填写或提交答案时出错: {e}")
+            return False
 
     async def _write_answers_to_cache(self, breadcrumb_parts: list[str]):
         """导航到答案解析页面，提取正确答案，并作为一个简单的列表写入缓存。"""
