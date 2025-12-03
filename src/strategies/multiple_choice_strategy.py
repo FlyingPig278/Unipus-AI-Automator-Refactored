@@ -94,10 +94,16 @@ class MultipleChoiceStrategy(BaseStrategy):
             
             cache_write_needed = not is_chained_task # 只有在非题中题模式下才写真正的缓存
 
-            article_text = await self._get_article_text()
-            direction_text = await self._get_direction_text()
-            additional_material = await self.driver_service._extract_additional_material_for_ai()
-            question_text = await self._get_full_question_text_for_ai(question_locator)
+            print("正在并发提取文章、说明、题目等信息...")
+            tasks = [
+                self._get_article_text(),
+                self._get_direction_text(),
+                self.driver_service._extract_additional_material_for_ai(),
+                self._get_full_question_text_for_ai(question_locator)
+            ]
+            results = await asyncio.gather(*tasks)
+            article_text, direction_text, additional_material, question_text = results
+            print("信息提取完毕。")
 
             # 将共享上下文和本地上下文结合
             combined_context = f"{shared_context}\n{article_text}"

@@ -56,8 +56,16 @@ class QAVoiceStrategy(BaseVoiceStrategy):
         print("=" * 20)
         print("开始执行语音简答策略...")
 
-        # 1. 检查是否需要返回获取文章 (页面级别逻辑，只执行一次)
-        direction_text = await self._get_direction_text()
+        # 并发提取页面级别的说明和额外材料
+        print("正在并发提取页面级信息...")
+        page_level_tasks = [
+            self._get_direction_text(),
+            self.driver_service._extract_additional_material_for_ai()
+        ]
+        results = await asyncio.gather(*page_level_tasks)
+        direction_text, additional_material = results
+        print("页面级信息提取完毕。")
+
         page_level_article_text = "" # 用于存储跨页获取的文章
         
         # 通过模糊匹配判断是否属于需要返回前文的特殊题型
@@ -85,7 +93,8 @@ class QAVoiceStrategy(BaseVoiceStrategy):
                 
                 # c. 抓取文章内容
                 print("正在提取文章内容...")
-                page_level_article_text = await self.driver_service._extract_additional_material_for_ai() # 直接从文字材料中提取
+                # 注意：此处假设跳转后的文章在 additional_material 中，所以复用该提取逻辑
+                page_level_article_text = await self.driver_service._extract_additional_material_for_ai()
                 if not page_level_article_text:
                     print("警告：已跳转到文章页，但未能提取到文章文本。")
 
@@ -100,9 +109,6 @@ class QAVoiceStrategy(BaseVoiceStrategy):
                 print(f"在返回获取文章的过程中发生严重错误，将中止任务: {e}")
                 return False
         
-        # 2. 页面级别的额外材料 (在循环外，因为通常对整个页面有效)
-        additional_material = await self.driver_service._extract_additional_material_for_ai()
-        
         question_containers_selector = ".p-oral-personal-state .oral-personal-state-wrapper"
         all_question_containers = await self.driver_service.page.locator(question_containers_selector).all()
         print(f"发现 {len(all_question_containers)} 个语音简答题容器。")
@@ -113,19 +119,27 @@ class QAVoiceStrategy(BaseVoiceStrategy):
             print(f"\n--- 开始处理第 {i + 1} 个语音简答题 ---")
 
             try:
-                # 3. 针对当前子题，提取其内部的媒体文件
-                current_question_media_text = await self._get_article_text(container=container)
-                
-                # 4. 提取子题问题文本
+                # 并发提取当前子题的媒体和问题文本
                 question_locator = container.locator(".oral-personal-state-oral-container .oral-personal-state-sentence-container .component-htmlview")
-                if not await question_locator.is_visible(timeout=5000):
+                
+                print("正在并发提取当前题目信息...")
+                sub_question_tasks = [
+                    self._get_article_text(container=container),
+                    question_locator.text_content()
+                ]
+                results = await asyncio.gather(*sub_question_tasks)
+                current_question_media_text, question_text_raw = results
+                print("当前题目信息提取完毕。")
+
+                if not question_text_raw:
                     print("错误：在当前容器中找不到问题文本元素，中止本页所有语音简答题。")
                     should_abort_page = True
                     break
-                question_text = (await question_locator.text_content()).strip()
+                
+                question_text = question_text_raw.strip()
                 print(f"提取到问题文本: '{question_text}'")
 
-                # 5. 组合所有上下文信息
+                # 组合所有上下文信息
                 combined_article_text = ""
                 if page_level_article_text:
                     combined_article_text += page_level_article_text + "\n"

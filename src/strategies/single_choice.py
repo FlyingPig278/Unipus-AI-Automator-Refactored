@@ -83,10 +83,17 @@ class SingleChoiceStrategy(BaseStrategy):
             cache_write_needed = not is_chained_task # 只有在非题中题模式下才写真正的缓存
 
             # --- AI后备逻辑 ---
-            article_text = await self._get_article_text()
-            direction_text = await self._get_direction_text()
-            additional_material = await self.driver_service._extract_additional_material_for_ai()
-            
+            # 使用 asyncio.gather 并发执行所有独立的异步信息提取任务
+            print("正在并发提取文章、说明、题目等信息...")
+            tasks = [
+                self._get_article_text(),
+                self._get_direction_text(),
+                self.driver_service._extract_additional_material_for_ai()
+            ]
+            results = await asyncio.gather(*tasks)
+            article_text, direction_text, additional_material = results
+            print("信息提取完毕。")
+
             # 精细化提取题目和选项文本
             question_texts = []
             for qw_locator in original_question_locators:

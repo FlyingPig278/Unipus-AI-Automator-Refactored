@@ -74,14 +74,19 @@ class FillInTheBlankStrategy(BaseStrategy):
 
             cache_write_needed = not is_chained_task  # 只有在非题中题模式下才写真正的缓存
 
-            # 合并多种来源的上下文信息
-            article_text = await self._get_article_text()
-            additional_material = await self.driver_service._extract_additional_material_for_ai()
+            # 使用 asyncio.gather 并发执行所有独立的异步信息提取任务
+            print("正在并发提取文章、说明、题目等信息...")
+            tasks = [
+                self._get_article_text(),
+                self.driver_service._extract_additional_material_for_ai(),
+                self._get_direction_text()
+            ]
+            results = await asyncio.gather(*tasks)
+            article_text, additional_material, direction_text = results
+            print("信息提取完毕。")
 
             # 将共享上下文和本地上下文结合
             full_context = f"{shared_context}\n{article_text}\n{additional_material}".strip()
-
-            direction_text = await self._get_direction_text()
 
             question_locator = self.driver_service.page.locator(".question-common-abs-reply")
             question_html = await question_locator.inner_html()

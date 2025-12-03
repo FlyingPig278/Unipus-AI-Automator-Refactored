@@ -35,15 +35,20 @@ class ShortAnswerStrategy(BaseStrategy):
 
         # 简答题不使用缓存，总是调用AI
         try:
-            # 1. 提取共享上下文
-            article_text = await self._get_article_text()
-            additional_material = await self.driver_service._extract_additional_material_for_ai()
+            # 1. 使用 asyncio.gather 并发提取所有上下文信息
+            print("正在并发提取文章、说明等信息...")
+            tasks = [
+                self._get_article_text(),
+                self.driver_service._extract_additional_material_for_ai(),
+                self._get_direction_text()
+            ]
+            results = await asyncio.gather(*tasks)
+            article_text, additional_material, direction_text = results
+            print("信息提取完毕。")
             
             # 将共享上下文和本地上下文结合
             full_context = f"{shared_context}\n{article_text}\n{additional_material}".strip()
             
-            direction_text = await self._get_direction_text()
-
             # 2. 提取所有子问题
             question_containers = await self.driver_service.page.locator(".question-inputbox").all()
             sub_questions = []

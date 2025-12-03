@@ -66,9 +66,15 @@ class DragAndDropStrategy(BaseStrategy):
                 
                 cache_write_needed = not is_chained_task # 只有在非题中题模式下才写真正的缓存
                 
-                # 合并媒体转录和额外材料作为统一的上下文
-                transcript = await self._get_media_transcript()
-                additional_material = await self.driver_service._extract_additional_material_for_ai()
+                # 使用 asyncio.gather 并发执行所有独立的异步信息提取任务
+                print("正在并发提取媒体、材料等信息...")
+                tasks = [
+                    self._get_media_transcript(),
+                    self.driver_service._extract_additional_material_for_ai()
+                ]
+                results = await asyncio.gather(*tasks)
+                transcript, additional_material = results
+                print("信息提取完毕。")
                 
                 # 将共享上下文和本地上下文结合
                 full_context = f"{shared_context}\n{transcript}\n{additional_material}".strip()
