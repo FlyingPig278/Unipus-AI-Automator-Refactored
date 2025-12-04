@@ -42,7 +42,7 @@ class BaseVoiceStrategy(BaseStrategy, ABC):
         安装一个持久化的WebSocket劫持脚本。
         该脚本会一直存在，通过一个全局变量来接收要发送的音频。
         """
-        print("[AI-DEBUG] 正在安装持久化WebSocket劫持器...")
+        logger.debug("[AI-DEBUG] 正在安装持久化WebSocket劫持器...")
         persistent_script = """
         (() => {
             if (window.isAiWebSocketHijackInstalled) {
@@ -102,7 +102,7 @@ class BaseVoiceStrategy(BaseStrategy, ABC):
 
     async def _execute_single_voice_task(self, container: Locator, ref_text: str, retry_params: List[Dict[str, Any]]) -> Tuple[bool, bool]:
         """
-        执行单个语音任务，包含完整的重试、注入、评分逻辑（使用一次性劫持）。
+        执行单个语音任务，包含完整的重试、注入、评分逻辑（使用持久化劫持）。
 
         :param container: 当前语音题的Playwright Locator容器。
         :param ref_text: 待通过TTS朗读的文本。
@@ -113,12 +113,12 @@ class BaseVoiceStrategy(BaseStrategy, ABC):
         succeeded = False
 
         for attempt, params in enumerate(retry_params):
-            print(f"   --- 第 {attempt + 1}/{len(retry_params)}次尝试 ---")
+            logger.info(f"   --- 第 {attempt + 1}/{len(retry_params)}次尝试 ---")
             try:
                 # 1. 生成音频
                 audio_bytes = await self.ai_service.text_to_wav(ref_text, **{k:v for k,v in params.items() if k != 'description'})
                 if not audio_bytes:
-                    print("警告：生成TTS音频失败，跳过本次尝试。")
+                    logger.warning("警告：生成TTS音频失败，跳过本次尝试。")
                     continue
 
                 with wave.open(BytesIO(audio_bytes), 'rb') as wf:
@@ -126,9 +126,11 @@ class BaseVoiceStrategy(BaseStrategy, ABC):
                     rate = wf.getframerate()
                     duration = frames / float(rate)
 
-                # 2. 准备并注入一次性劫持脚本
-                injection_script = self._prepare_one_shot_injection(audio_bytes)
-                await self.driver_service.page.evaluate(injection_script)
+                # 2. 在每次尝试前，都确保劫持脚本已安装（此操作是幂等的，很安全）
+                await self._install_persistent_hijack()
+                
+                # 3. 设置持久化劫持器要使用的音频载荷
+                await self._set_persistent_audio_payload(audio_bytes)
 
                 record_button_locator = container.locator(".button-record")
                 await record_button_locator.click()
@@ -142,30 +144,29 @@ class BaseVoiceStrategy(BaseStrategy, ABC):
                 await record_button_locator.click()
 
                 last_score = await self._wait_for_and_get_score(container)
-                print(f"   尝试 {attempt + 1} 得分: {last_score} (使用参数: {params['description']})")
+                logger.info(f"   尝试 {attempt + 1} 得分: {last_score} (使用参数: {params['description']})")
 
                 if last_score >= 85:
-                    print("✅ 分数 >= 85，判定为优秀。")
+                    logger.success("✅ 分数 >= 85，判定为优秀。")
                     succeeded = True
                     return True, False
                 if last_score < 60:
-                    print("❌ 分数 < 60，判定为失败，将中止整个页面。")
+                    logger.error("❌ 分数 < 60，判定为失败，将中止整个页面。")
                     return False, True
 
-                print(f"   分数 {last_score} 在 60-84 之间，继续尝试以获得更高分数...")
+                logger.debug(f"   分数 {last_score} 在 60-84 之间，继续尝试以获得更高分数...")
 
             except Exception as e:
-                print(f"   第 {attempt + 1} 次尝试时发生内部错误: {e}")
+                logger.error(f"   第 {attempt + 1} 次尝试时发生内部错误: {e}")
                 last_score = 0
                 await asyncio.sleep(1)
-            finally:
-                await self._cleanup_one_shot_injection() # 清理一次性劫持
+            # 注意：持久化模式下，finally块不再需要进行任何清理操作
 
         if not succeeded and last_score < 80:
-            print(f"❌ 所有尝试结束后，最终分数 ({last_score}) 仍低于80，将中止整个页面。")
+            logger.error(f"❌ 所有尝试结束后，最终分数 ({last_score}) 仍低于80，将中止整个页面。")
             return False, True
         
-        print(f"✅ 所有尝试结束后，最终分数 ({last_score}) 在 80-84 之间，判定为可接受。")
+        logger.success(f"✅ 所有尝试结束后，最终分数 ({last_score}) 在 80-84 之间，判定为可接受。")
         return True, False
 
     # 新增：用于持久化劫持模式下，设置要发送的AI音频载荷
@@ -174,7 +175,7 @@ class BaseVoiceStrategy(BaseStrategy, ABC):
         通过设置一个全局变量来提供预生成的音频数据，供持久化劫持脚本使用。
         """
         audio_b64 = base64.b64encode(audio_bytes).decode('ascii')
-        print("   ...正在设置AI音频“信使”变量。")
+        logger.debug("   ...正在设置AI音频“信使”变量。")
         await self.driver_service.page.evaluate(f"window.ai_audio_payload = '{audio_b64}';")
 
     # 新增：用于一次性劫持模式下，生成自包含的劫持脚本
@@ -249,7 +250,7 @@ class BaseVoiceStrategy(BaseStrategy, ABC):
             score_str = await score_element.text_content()
             return int(score_str)
         except Exception as e:
-            print(f"   等待或解析分数时出错: {e}")
+            logger.error(f"   等待或解析分数时出错: {e}")
             return 0
 
     # 用于清理一次性劫持的旧方法
@@ -268,7 +269,7 @@ class BaseVoiceStrategy(BaseStrategy, ABC):
                 }
             """)
         except Exception as e:
-            print(f"清理一次性劫持脚本时发生错误: {e}")
+            logger.error(f"清理一次性劫持脚本时发生错误: {e}")
 
     # 用于清理持久化劫持的“信使”变量
     async def _clear_persistent_audio_payload(self):
@@ -278,5 +279,5 @@ class BaseVoiceStrategy(BaseStrategy, ABC):
         try:
             await self.driver_service.page.evaluate("delete window.ai_audio_payload;")
         except Exception as e:
-            print(f"清理“信使”变量时发生错误: {e}")
+            logger.error(f"清理“信使”变量时发生错误: {e}")
 

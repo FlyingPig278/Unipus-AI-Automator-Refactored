@@ -1,7 +1,7 @@
-# src/strategies/base_strategy.py
 from abc import ABC, abstractmethod
 from src.services.driver_service import DriverService
 from src.services.ai_service import AIService
+from src.utils import logger
 
 class BaseStrategy(ABC):
     """
@@ -57,5 +57,5 @@ class BaseStrategy(ABC):
         except Exception:
             # 捕获超时或其他错误，静默处理
             pass
-        print("未找到题目说明（Direction）。")
+        logger.info("未找到题目说明（Direction）。")
         return ""

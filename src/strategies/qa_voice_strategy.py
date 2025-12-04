@@ -74,15 +74,15 @@ class QAVoiceStrategy(BaseVoiceStrategy):
                     first_tab_locator = header_tasks_container.locator(".pc-task").first
                     if not original_tab_title or not await first_tab_locator.is_visible():
                         raise Exception("无法找到当前激活的标签或第一个任务标签。")
-                    logger.info(f"正在从 '{original_tab_title}' 导航到第一个任务页获取文章...")
+                    logger.debug(f"正在从 '{original_tab_title}' 导航到第一个任务页获取文章...")
                     await first_tab_locator.click()
                     await self.driver_service.handle_common_popups()
                     await self.driver_service.page.locator(".layout-material-container").wait_for(timeout=15000)
-                    logger.info("正在提取文章内容...")
+                    logger.debug("正在提取文章内容...")
                     page_level_article_text = await self.driver_service._extract_additional_material_for_ai()
                     if not page_level_article_text:
                         logger.warning("已跳转到文章页，但未能提取到文章文本。")
-                    logger.info(f"文章提取完毕，正在返回 '{original_tab_title}'...")
+                    logger.debug(f"文章提取完毕，正在返回 '{original_tab_title}'...")
                     original_tab_locator = header_tasks_container.locator(f'[title="{original_tab_title}"]')
                     await original_tab_locator.click()
                     await self.driver_service.page.locator(".p-oral-personal-state .oral-personal-state-wrapper").wait_for(timeout=15000)
@@ -213,7 +213,7 @@ class QAVoiceStrategy(BaseVoiceStrategy):
         try:
             article_locator = search_scope.locator(".comp-common-article-content").first
             if await article_locator.is_visible(timeout=500):
-                logger.info("发现文章容器，正在提取文本...")
+                logger.debug("发现文章容器，正在提取文本...")
                 return await article_locator.text_content()
         except PlaywrightError:
             pass

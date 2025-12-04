@@ -74,11 +74,11 @@ class RolePlayStrategy(BaseVoiceStrategy):
     async def _prepare_turns(self):
         logger.info("进入准备阶段...")
         await self.driver_service.page.locator(".role-list .role").first.click()
-        logger.info("已选择第一个角色。")
+        logger.debug("已选择第一个角色。")
 
         list_box = self.driver_service.page.locator(".role-play-quiz .list-box")
         await list_box.wait_for(timeout=5000)
-        logger.info("对话列表已加载。")
+        logger.debug("对话列表已加载。")
 
         self.my_turns = []
         all_items = await list_box.locator(".list-item-review").all()
@@ -94,7 +94,7 @@ class RolePlayStrategy(BaseVoiceStrategy):
                     text = await text_locator.text_content(timeout=1000)
                     if text:
                         self.my_turns.append({"text": text.strip(), "locator": item})
-                        logger.info(f"找到我方回合: {text.strip()}")
+                        logger.debug(f"找到我方回合: {text.strip()}")
                 except Exception:
                     continue
         
@@ -134,18 +134,18 @@ class RolePlayStrategy(BaseVoiceStrategy):
 
                 pause_icon_selector = "svg.pause-circle-player path[d^='M464.54']"
                 await active_turn_locator.locator(pause_icon_selector).wait_for(timeout=5000)
-                logger.info(f"检测到我方回合“{text}”已开始（出现暂停图标）。")
+                logger.debug(f"检测到我方回合“{text}”已开始（出现暂停图标）。")
 
                 await self._set_persistent_audio_payload(audio_bytes)
 
                 wait_time = duration + 0.5
-                logger.info(f"音频时长 {duration:.2f}s，等待 {wait_time:.2f}s 模拟录音...")
+                logger.debug(f"音频时长 {duration:.2f}s，等待 {wait_time:.2f}s 模拟录音...")
                 await self.driver_service.page.wait_for_timeout(wait_time * 1000)
                 
                 await active_turn_locator.locator("svg.pause-circle-player.active").click()
-                logger.info("已点击结束当前回合。")
+                logger.debug("已点击结束当前回合。")
 
-                logger.info("正在等待分数更新...")
+                logger.debug("正在等待分数更新...")
                 score = await self._wait_for_and_get_score(stable_turn_locator)
                 turn_scores.append(score)
                 logger.info(f"第 {i + 1} 回合得分: {score}")

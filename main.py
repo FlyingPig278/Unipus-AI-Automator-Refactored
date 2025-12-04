@@ -140,7 +140,7 @@ async def run_auto_mode(browser_service: DriverService, ai_service: AIService, c
        logger.error("未能获取到任何课程，程序终止。")
        return
 
-   logger.always_print("\n检测到以下课程：")
+   logger.always_print("检测到以下课程：")
    for i, name in enumerate(courses):
        logger.always_print(f"[{i + 1}] {name}")
 
@@ -182,12 +182,12 @@ async def run_auto_mode(browser_service: DriverService, ai_service: AIService, c
                await run_strategy_on_current_page(browser_service, ai_service, cache_service)
                await asyncio.sleep(2)
 
-       logger.always_print("\n所有待完成任务处理完毕！")
+       logger.always_print("所有待完成任务处理完毕！")
 
 async def run_manual_debug_mode(browser_service: DriverService, ai_service: AIService, cache_service: CacheService):
    """运行手动调试模式，允许用户手动导航到页面后，由程序接管。"""
    config.IS_AUTO_MODE = False
-   logger.always_print("\n已进入手动调试模式。")
+   logger.always_print("已进入手动调试模式。")
    
    while True:
        user_input = await asyncio.to_thread(input, "请在浏览器中手动进入您想调试的题目页面，然后回到此处按Enter键继续 (输入 'q' 退出此模式): ")

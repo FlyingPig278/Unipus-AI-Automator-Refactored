@@ -105,7 +105,7 @@ class DragAndDropStrategy(BaseStrategy):
                 logger.info(f"AI返回的正确顺序: {', '.join(target_order)}")
             
             js_code = self._get_js_to_execute(target_order)
-            logger.info("正在页面中执行JS以更新题目顺序...")
+            logger.debug("正在页面中执行JS以更新题目顺序...")
             await self.driver_service.page.evaluate(js_code)
             logger.success("JS代码执行完毕，UI应已更新。")
 

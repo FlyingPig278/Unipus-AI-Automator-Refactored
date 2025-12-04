@@ -15,6 +15,7 @@ from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUs
 import src.config as config
 from src import prompts
 from src.utils import logger
+import warnings
 
 
 class LocalTTSEngine:
@@ -89,7 +90,7 @@ class LocalTTSEngine:
         try:
             await self.ensure_model_exists()
 
-            logger.info(f"正在使用Piper TTS合成语音 (语速: {length_scale}, noise_scale: {noise_scale}, noise_w: {noise_w}): '{text[:30]}...'")
+            logger.debug(f"正在使用Piper TTS合成语音 (语速: {length_scale}, noise_scale: {noise_scale}, noise_w: {noise_w}): '{text[:30]}...'")
             piper_command = [
                 "piper", 
                 "--model", str(self.model_path),
@@ -110,7 +111,7 @@ class LocalTTSEngine:
                 with open(output_path, "rb") as f:
                     audio_bytes = f.read()
                 
-                logger.info(f"Piper TTS 语音合成成功，返回 {len(audio_bytes)} 字节数据。")
+                logger.debug(f"Piper TTS 语音合成成功，返回 {len(audio_bytes)} 字节数据。")
                 return audio_bytes
             else:
                 raise Exception(f"Piper执行失败: {stderr.decode('utf-8', errors='ignore')}")
@@ -137,6 +138,9 @@ class AIService:
         初始化AI服务，加载Whisper模型、配置DeepSeek客户端和本地TTS引擎。
         """
         logger.info("正在加载Whisper模型...")
+        
+        # 忽略 whisper 库关于 FP16 在 CPU 上不受支持的警告
+        warnings.filterwarnings("ignore", message="FP16 is not supported on CPU; using FP32 instead", category=UserWarning)
         self.whisper_model = whisper.load_model(config.WHISPER_MODEL)
         logger.info("Whisper模型加载完毕。")
 

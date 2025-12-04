@@ -88,7 +88,7 @@ class DiscussionStrategy(BaseStrategy):
             if not is_chained_task:
                 publish_button = self.driver_service.page.get_by_role("button", name="发 布")
                 await expect(publish_button).to_be_enabled(timeout=5000)
-                logger.info("发布按钮已变为可点击状态。")
+                logger.debug("发布按钮已变为可点击状态。")
 
                 await publish_button.click()
                 logger.success("评论已发布。")

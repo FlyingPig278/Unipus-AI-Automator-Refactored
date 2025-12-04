@@ -130,7 +130,7 @@ class MultipleChoiceStrategy(BaseStrategy):
                 logger.error("未能从AI获取有效答案，终止执行。")
                 return False
 
-            logger.info(f"AI回答: {json_data}")
+            logger.debug(f"AI回答: {json_data}")
             answers_to_fill = [str(char).upper() for char in json_data["questions"][0].get("answer", [])]
 
         return await self._fill_and_submit(answers_to_fill, cache_write_needed, breadcrumb_parts, is_chained_task=is_chained_task)
@@ -152,7 +152,7 @@ class MultipleChoiceStrategy(BaseStrategy):
 
     async def _fill_and_submit(self, answers: list[str], cache_write_needed: bool, breadcrumb_parts: list[str], is_chained_task: bool = False) -> bool:
         try:
-            logger.info("正在解析并预验证答案...")
+            logger.debug("正在解析并预验证答案...")
             option_wrap_locator = self.driver_service.page.locator("div.question-common-abs-choice.multipleChoice .option-wrap").first
 
             options_count = await option_wrap_locator.locator(".option").count()

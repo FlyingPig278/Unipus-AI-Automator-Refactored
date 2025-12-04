@@ -19,24 +19,43 @@ class NoReplyStrategy(BaseStrategy):
     @staticmethod
     async def check(driver_service: DriverService) -> bool:
         """
-        检查当前页面是否为纯信息页。
-        判断依据是页面主要容器 .layoutBody-container 是否缺少 .has-reply class。
+        检查当前页面是否为纯信息页，且必须包含媒体文件。
+        判断依据是页面主要容器 .layoutBody-container 是否缺少 .has-reply class，
+        同时页面上存在可播放的媒体文件。
         """
         try:
-            # 首先确保主容器存在
+            # 1. 检查页面是否无作答区域
             container = driver_service.page.locator(".layoutBody-container")
             if await container.count() > 0:
-                # 获取class属性字符串
                 class_attr = await container.first.get_attribute("class")
+                # 必须没有作答区域
                 if class_attr and "has-reply" not in class_attr:
-                    # 再做一个辅助判断，确保页面不是空的或错误的
+                    # 辅助判断：确保页面不是空的或错误的，且必须有 material
                     if await driver_service.page.locator(".question-common-abs-material").count() > 0:
-                        logger.info("检测到页面无作答区域（缺少has-reply class），应用“无作答页面策略”。")
-                        return True
+                        # 2. 检查是否存在媒体文件
+                        media_url, _ = await driver_service.get_media_source_and_type()
+                        if media_url:
+                            logger.info("检测到页面无作答区域，且包含媒体文件，应用“无作答页面策略”。")
+                            return True
+                        else:
+                            logger.info("检测到页面无作答区域，但未发现媒体文件，不应用“无作答页面策略”。")
+                            return False
+                    else:
+                        logger.info("检测到页面无作答区域，但无 .question-common-abs-material，不应用“无作答页面策略”。")
+                        return False
+                else:
+                    logger.info("检测到页面有作答区域 (含has-reply class)，不应用“无作答页面策略”。")
+                    return False
+            else:
+                logger.info("未找到 .layoutBody-container，不应用“无作答页面策略”。")
+                return False
         except PlaywrightError as e:
             logger.error(f"检查 NoReplyStrategy 时出错: {e}")
             return False
-        return False
+        except Exception as e:
+            logger.error(f"在 NoReplyStrategy 检查媒体文件时发生异常: {e}")
+            return False
+        return False # Fallback
 
     async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> bool:
         logger.info("="*20)

@@ -9,11 +9,13 @@ console = Console(highlight=False, force_terminal=True)
 
 # 2. 配置 RichHandler，使其使用我们创建的 console。
 #    - rich_tracebacks=True 能够在出现异常时打印带语法高亮的美观回溯信息。
-#    - show_path=False 可以让日志消息更简洁，不显示文件路径。
+# - show_path=False 可以让日志消息更简洁，不显示文件路径。
+# - markup=True 允许日志消息中的 [color]...[/color] 标记被解析为颜色。
 handler = RichHandler(
     console=console,
     rich_tracebacks=True,
-    show_path=False
+    show_path=False,
+    markup=True
 )
 
 # 3. 为Python的根记录器（root logger）进行基础配置。
@@ -41,7 +43,8 @@ class LoggerAdapter:
 
     def warning(self, message: str):
         """记录警告信息。RichHandler 会自动将其着色为黄色。"""
-        _logger.warning(f"警告：{message}")
+        _logger.warning(f"警告：{message}"
+                        f"")
 
     def error(self, message: str):
         """记录错误信息。RichHandler 会自动将其着色为红色。"""

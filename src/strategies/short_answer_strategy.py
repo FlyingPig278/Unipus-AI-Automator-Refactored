@@ -41,15 +41,16 @@ class ShortAnswerStrategy(BaseStrategy):
             ]
             results = await asyncio.gather(*tasks)
             article_text, additional_material = results
-            direction_text = await self._get_direction_text() # Direction a bit different, might rely on others
+            direction_text = await self._get_direction_text()
             logger.info("信息提取完毕。")
-            
+
             full_context = f"{shared_context}\n{article_text}\n{additional_material}".strip()
-            
             is_table_question = "|:---:" in additional_material
 
-            # 统一提取所有子问题题干，无论是否为表格题
+            # 统一提取所有子问题题干和输入框数量
             question_containers = await self.driver_service.page.locator(".question-inputbox").all()
+            num_answers_required = len(question_containers)
+            
             sub_questions = []
             for container in question_containers:
                 sub_q_text = ""
@@ -64,10 +65,15 @@ class ShortAnswerStrategy(BaseStrategy):
             sub_questions_text = "\n".join([f"{i+1}. {q}" for i, q in enumerate(sub_questions) if q])
             logger.info(f"提取到 {len(sub_questions)} 个简答题的题干。")
 
+            # 构造关于答案数量的明确指令
+            explicit_count_instruction = f"重要指令：页面上共有 {num_answers_required} 个回答框，你必须为每个回答框生成一个答案，总共生成 {num_answers_required} 个答案。"
+            # 将此明确指令附加到原有的方向说明中
+            final_direction_text = f"{direction_text}\n\n{explicit_count_instruction}"
+
             if is_table_question:
                 logger.info("检测到表格题型，使用专用的表格Prompt。")
                 prompt = prompts.TABLE_SHORT_ANSWER_PROMPT.format(
-                    direction_text=direction_text,
+                    direction_text=final_direction_text,
                     article_text=full_context,
                     sub_questions=sub_questions_text
                 )
@@ -75,7 +81,7 @@ class ShortAnswerStrategy(BaseStrategy):
                 logger.info("使用标准简答题Prompt。")
                 article_section = f"以下是文章或听力原文内容:\n{full_context}\n\n" if full_context else ""
                 prompt = prompts.SHORT_ANSWER_PROMPT.format(
-                    direction_text=direction_text,
+                    direction_text=final_direction_text,
                     article_text=article_section,
                     sub_questions=sub_questions_text
                 )

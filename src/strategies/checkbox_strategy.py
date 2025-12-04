@@ -44,7 +44,7 @@ class CheckboxStrategy(BaseStrategy):
             while await self.driver_service.page.locator(unchecked_boxes_selector).count() > 0:
                 await self.driver_service.page.locator(unchecked_boxes_selector).first.click()
                 clicked_count += 1
-                logger.info(f"已点击第 {clicked_count} 个未打钩项。")
+                logger.debug(f"已点击第 {clicked_count} 个未打钩项。")
                 await asyncio.sleep(0.5)
 
             logger.success(f"所有 {clicked_count} 个未打钩项已全部点击完毕。")

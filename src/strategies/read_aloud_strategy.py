@@ -1,4 +1,5 @@
 import asyncio
+import unicodedata
 
 from src import config
 from src.services.ai_service import AIService
@@ -58,8 +59,22 @@ class ReadAloudStrategy(BaseVoiceStrategy):
                     logger.error("错误：在当前容器中找不到朗读文本元素，中止本页面所有语音题。")
                     should_abort_page = True
                     break
-                ref_text = (await ref_text_locator.text_content()).strip()
-                logger.info(f"提取到待朗读文本: '{ref_text}'")
+                
+                # 1. 提取原始文本
+                raw_text = (await ref_text_locator.text_content()).strip()
+                
+                # 2. 清洗和标准化文本，去除可能导致TTS引擎崩溃的不可见字符或非标准字符
+                normalized_text = unicodedata.normalize('NFKC', raw_text)
+                
+                # 3. 额外将特殊的标点符号替换为基础的ASCII等价物，提高兼容性
+                ref_text = normalized_text.replace('—', '-') \
+                                          .replace('…', '...') \
+                                          .replace('“', '"') \
+                                          .replace('”', '"') \
+                                          .replace('‘', "'") \
+                                          .replace('’', "'")
+                
+                logger.info(f"提取并清洗待朗读文本: '{ref_text}'")
 
                 succeeded, should_abort_from_task = await self._execute_single_voice_task(
                     container=container,
@@ -76,7 +91,7 @@ class ReadAloudStrategy(BaseVoiceStrategy):
                 should_abort_page = True
                 break
 
-        logger.info("\n所有语音题处理完毕。")
+        logger.info("所有语音题处理完毕。")
 
         if should_abort_page:
             logger.warning("由于发生错误或分数不达标，已中止最终提交。")
