@@ -22,22 +22,86 @@ from rich.progress import Progress, TextColumn, BarColumn, TimeElapsedColumn, Mo
 # 全局可用策略列表
 # ==============================================================================
 AVAILABLE_STRATEGIES = [
+    # 策略的顺序很重要，防御性的策略应该放在最前面
     UnsupportedImageStrategy,
+    # 需要特殊处理的复合型或无按钮任务
     RolePlayStrategy,
+    DiscussionStrategy,
+    # 语音策略
     ReadAloudStrategy,
     QAVoiceStrategy,
+    # 常规选择、填空、拖拽题
     CheckboxStrategy,
     DragAndDropStrategy,
     FillInTheBlankStrategy,
     ShortAnswerStrategy,
     MultipleChoiceStrategy,
     SingleChoiceStrategy,
-    DiscussionStrategy,
+    # 保底策略，处理纯听/看任务
     NoReplyStrategy
 ]
 
+
+async def _cache_chained_answers(
+    browser_service: DriverService,
+    cache_service: CacheService,
+    tasks_to_cache: list,
+    base_breadcrumb_parts: list[str]
+):
+    """
+    在“题中题”全部完成后，统一回写需要缓存的答案。
+    """
+    if not tasks_to_cache:
+        return
+
+    logger.info("=" * 20)
+    logger.info("检测到“题中题”中有AI作答的题目，开始统一回写缓存...")
+
+    try:
+        await browser_service._navigate_to_answer_analysis_page()
+        
+        # 按索引排序，确保我们按顺序点击“下一题”
+        tasks_to_cache.sort(key=lambda x: x['index'])
+        
+        current_analysis_index = 0
+        for task in tasks_to_cache:
+            target_index = task['index']
+            strategy_type = task['type']
+            
+            # 点击“下一题”直到我们到达目标子题的解析页面
+            clicks_needed = target_index - current_analysis_index
+            if clicks_needed > 0:
+                logger.info(f"正在从解析页 {current_analysis_index} 跳转到 {target_index}...")
+                for _ in range(clicks_needed):
+                    await browser_service.click_next_on_analysis_page()
+            
+            current_analysis_index = target_index
+            
+            # 构建当前子题的缓存Key
+            sub_task_breadcrumb = base_breadcrumb_parts + [str(target_index)]
+            
+            # 根据策略类型决定调用哪个答案提取方法
+            logger.info(f"正在为子题 {target_index} ({strategy_type}) 提取答案...")
+            answers = []
+            if strategy_type == "fill_in_the_blank":
+                answers = await browser_service.extract_fill_in_the_blank_answers_from_analysis_page()
+            elif strategy_type in ["single_choice", "multiple_choice", "drag_and_drop_js_injection"]:
+                answers = await browser_service.extract_all_correct_answers_from_analysis_page()
+            
+            if answers:
+                cache_service.save_task_page_answers(sub_task_breadcrumb, strategy_type, answers)
+            else:
+                logger.warning(f"未能为子题 {target_index} 提取到答案，跳过缓存。")
+
+        logger.success("“题中题”缓存回写完成。")
+
+    except Exception as e:
+        logger.error(f"“题中题”缓存回写过程中发生严重错误: {e}")
+
+
 async def run_strategy_on_current_page(browser_service: DriverService, ai_service: AIService, cache_service: CacheService):
     try:
+        base_breadcrumb_parts = await browser_service.get_breadcrumb_parts()
         btn_text = ""
         try:
             action_btn = browser_service.page.locator(".btn:has-text('下一题'), .btn:has-text('下一页'), .btn:has-text('提 交'), .btn:has-text('提交')").first
@@ -63,33 +127,33 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
         elif "下一题" in btn_text or "下一页" in btn_text:
             logger.info("检测到“下一题”按钮，启动“题中题”循环模式。")
             shared_context = ""
-            config.HAS_FETCHED_REMOTE_ARTICLE = False # 重置状态锁
-            sub_task_index = 0 # 初始化子任务索引
-            cache_was_written_in_chain = False # 标志位，记录在本次链式任务中是否有缓存被写入
+            config.HAS_FETCHED_REMOTE_ARTICLE = False
+            
+            sub_task_index = 0
+            tasks_to_cache = [] # 记录需要缓存的任务信息
 
             while True:
-                current_strategy = None
+                current_strategy_instance = None
                 for StrategyClass in AVAILABLE_STRATEGIES:
                     if await StrategyClass.check(browser_service):
-                        current_strategy = StrategyClass(browser_service, ai_service, cache_service)
+                        current_strategy_instance = StrategyClass(browser_service, ai_service, cache_service)
                         logger.info(f"匹配到子题策略: {StrategyClass.__name__}")
                         break
                 
-                if current_strategy:
+                if current_strategy_instance:
                     try:
-                        # 调用策略时传入 sub_task_index，并接收 (succeeded, cache_written) 元组
-                        succeeded, cache_written = await current_strategy.execute(
+                        succeeded, cache_written = await current_strategy_instance.execute(
                             shared_context=shared_context,
                             is_chained_task=True,
                             sub_task_index=sub_task_index
                         )
                         if cache_written:
-                            cache_was_written_in_chain = True # 如果本次执行写入了缓存，更新标志
+                            tasks_to_cache.append({'index': sub_task_index, 'type': current_strategy_instance.strategy_type})
                         if not succeeded:
-                            logger.warning(f"策略 {current_strategy.__class__.__name__} 执行提前终止，任务链中断。")
+                            logger.warning(f"策略 {current_strategy_instance.__class__.__name__} 执行提前终止，任务链中断。")
                             break 
                     except Exception as e:
-                        logger.error(f"策略 {current_strategy.__class__.__name__} 执行时发生错误，终止当前任务链: {e}")
+                        logger.error(f"策略 {current_strategy_instance.__class__.__name__} 执行时发生错误，终止当前任务链: {e}")
                         break
                 else:
                     logger.info("当前子题未匹配到任何策略，尝试提取材料作为共享上下文...")
@@ -97,8 +161,6 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
                     if material:
                         logger.info("已提取到共享材料。")
                         shared_context += f"\n{material}"
-
-                sub_task_index += 1 # 递增子任务索引
 
                 action_btn_loop = browser_service.page.locator(".btn:has-text('下一题'), .btn:has-text('下一页'), .btn:has-text('提 交'), .btn:has-text('提交')").first
                 await action_btn_loop.wait_for(state="visible", timeout=10000)
@@ -109,12 +171,17 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
                     await action_btn_loop.click()
                     await asyncio.sleep(1) 
                     await browser_service.handle_common_popups()
+                    sub_task_index += 1
                 elif "提 交" in current_btn_text or "提交" in current_btn_text:
                     logger.info("检测到最终“提交”按钮，正在提交任务...")
                     await action_btn_loop.click()
+                    await browser_service.handle_rate_limit_modal()
                     await browser_service.handle_submission_confirmation()
                     logger.success("“题中题”任务完成。")
-                    # TODO: 在这里根据 cache_was_written_in_chain 调用统一的答案提取和缓存写入流程
+
+                    # 根据用户要求，只有在链中有需要缓存的题目时，才执行回写
+                    if tasks_to_cache:
+                        await _cache_chained_answers(browser_service, cache_service, tasks_to_cache, base_breadcrumb_parts)
                     break
                 else:
                     logger.warning(f"检测到未知按钮文本 '{current_btn_text}'，循环终止。")
@@ -129,8 +196,6 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
                     break
             
             if current_strategy:
-                # 特殊处理：某些策略（如RolePlay, Discussion）是独立的、自包含的任务，
-                # 即使页面初始时没有“提交”按钮，它们也应该被视为一个独立的任务，而不是链式任务的一部分。
                 if isinstance(current_strategy, (RolePlayStrategy, DiscussionStrategy)):
                     logger.info(f"检测到 {current_strategy.__class__.__name__}，强制以非链式任务模式(is_chained_task=False)执行。")
                     await current_strategy.execute(is_chained_task=False)

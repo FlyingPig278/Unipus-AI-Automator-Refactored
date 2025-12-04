@@ -528,6 +528,22 @@ class DriverService:
             
         return markdown_table, blank_counter
 
+    async def click_next_on_analysis_page(self):
+        """在答案解析页面点击“下一题”。"""
+        try:
+            # 答案解析页面的“下一题”按钮选择器可能与答题时不同，这里使用一个较为通用的
+            next_btn_locator = self.page.locator(".btn-group .btn:has-text('下一题')")
+            if await next_btn_locator.is_visible():
+                await next_btn_locator.click()
+                # 等待页面内容更新，例如等待题目编号变化
+                await asyncio.sleep(1) # 使用短暂等待，具体等待目标可后续优化
+                logger.info("已在解析页面点击“下一题”。")
+            else:
+                raise Exception("在解析页面未找到“下一题”按钮。")
+        except Exception as e:
+            logger.error(f"在解析页面点击“下一题”时出错: {e}")
+            raise
+			
     async def handle_rate_limit_modal(self):
         """
         检查并处理“操作过于频繁”的弹窗。如果检测到，则抛出RateLimitException。
