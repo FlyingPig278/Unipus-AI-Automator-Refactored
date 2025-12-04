@@ -15,6 +15,7 @@ from src.strategies.role_play_strategy import RolePlayStrategy
 from src.strategies.short_answer_strategy import ShortAnswerStrategy
 from src.strategies.qa_voice_strategy import QAVoiceStrategy
 from src.strategies.unsupported_image_strategy import UnsupportedImageStrategy
+from src.strategies.no_reply_strategy import NoReplyStrategy
 from rich.progress import track
 
 # ==============================================================================
@@ -31,18 +32,19 @@ AVAILABLE_STRATEGIES = [
     ShortAnswerStrategy,
     MultipleChoiceStrategy,
     SingleChoiceStrategy,
-    DiscussionStrategy
+    DiscussionStrategy,
+    NoReplyStrategy
 ]
 
 async def run_strategy_on_current_page(browser_service: DriverService, ai_service: AIService, cache_service: CacheService):
     try:
         btn_text = ""
         try:
-            action_btn = browser_service.page.locator(".btn:has-text('下一题'), .btn:has-text('提 交'), .btn:has-text('提交')").first
+            action_btn = browser_service.page.locator(".btn:has-text('下一题'), .btn:has-text('下一页'), .btn:has-text('提 交'), .btn:has-text('提交')").first
             await action_btn.wait_for(state="visible", timeout=3000)
             btn_text = await action_btn.text_content()
         except Exception:
-            logger.info("在页面上未找到‘提交’或‘下一题’按钮。")
+            logger.info("在页面上未找到‘提交’或‘下一题’/‘下一页’按钮。")
 
         if "提 交" in btn_text or "提交" in btn_text:
             logger.info("检测到“提交”按钮，执行单页策略...")
@@ -58,7 +60,7 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
             else:
                 logger.warning("在当前页面未找到适合的策略。")
             
-        elif "下一题" in btn_text:
+        elif "下一题" in btn_text or "下一页" in btn_text:
             logger.info("检测到“下一题”按钮，启动“题中题”循环模式。")
             shared_context = ""
             config.HAS_FETCHED_REMOTE_ARTICLE = False # 重置状态锁
@@ -87,11 +89,11 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
                         logger.info("已提取到共享材料。")
                         shared_context += f"\n{material}"
 
-                action_btn_loop = browser_service.page.locator(".btn:has-text('下一题'), .btn:has-text('提 交'), .btn:has-text('提交')").first
+                action_btn_loop = browser_service.page.locator(".btn:has-text('下一题'), .btn:has-text('下一页'), .btn:has-text('提 交'), .btn:has-text('提交')").first
                 await action_btn_loop.wait_for(state="visible", timeout=10000)
                 current_btn_text = await action_btn_loop.text_content()
 
-                if "下一题" in current_btn_text:
+                if "下一题" in current_btn_text or "下一页" in current_btn_text:
                     logger.info("点击“下一题”，进入下一个子题...")
                     await action_btn_loop.click()
                     await asyncio.sleep(1) 
@@ -115,10 +117,10 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
                     break
             
             if current_strategy:
-                # 特殊处理：RolePlayStrategy 是一种独立的、自包含的任务，
-                # 即使页面初始时没有“提交”按钮，它也应该被视为一个独立的任务，而不是链式任务的一部分。
-                if isinstance(current_strategy, RolePlayStrategy):
-                    logger.info("检测到 RolePlayStrategy，强制以非链式任务模式(is_chained_task=False)执行。")
+                # 特殊处理：某些策略（如RolePlay, Discussion）是独立的、自包含的任务，
+                # 即使页面初始时没有“提交”按钮，它们也应该被视为一个独立的任务，而不是链式任务的一部分。
+                if isinstance(current_strategy, (RolePlayStrategy, DiscussionStrategy)):
+                    logger.info(f"检测到 {current_strategy.__class__.__name__}，强制以非链式任务模式(is_chained_task=False)执行。")
                     await current_strategy.execute(is_chained_task=False)
                 else:
                     await current_strategy.execute(is_chained_task=True)
