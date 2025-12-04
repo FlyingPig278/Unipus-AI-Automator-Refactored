@@ -11,6 +11,7 @@ from src.services.ai_service import AIService
 from src.services.cache_service import CacheService
 from src.services.driver_service import DriverService
 from src.strategies.base_strategy import BaseStrategy
+from src.utils import logger
 
 
 class BaseVoiceStrategy(BaseStrategy, ABC):
@@ -135,7 +136,9 @@ class BaseVoiceStrategy(BaseStrategy, ABC):
                 recording_state_selector = ".button-record svg path[d*='M645.744']"
                 await container.locator(recording_state_selector).wait_for(timeout=5000)
 
-                await asyncio.sleep(duration + 0.5)
+                sleep_duration = min(duration + 0.5, 10) # 限制最长等待时间为10秒
+                logger.debug(f"音频时长 {duration:.2f}s，实际等待 {sleep_duration:.2f}s 模拟录音...")
+                await asyncio.sleep(sleep_duration)
                 await record_button_locator.click()
 
                 last_score = await self._wait_for_and_get_score(container)

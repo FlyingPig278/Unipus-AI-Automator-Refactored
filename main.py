@@ -3,7 +3,7 @@ import src.config as config
 from src.services.driver_service import DriverService
 from src.services.ai_service import AIService
 from src.services.cache_service import CacheService
-from src.utils import logger
+from src.utils import logger, console
 from src.strategies.checkbox_strategy import CheckboxStrategy
 from src.strategies.single_choice import SingleChoiceStrategy
 from src.strategies.read_aloud_strategy import ReadAloudStrategy
@@ -16,7 +16,7 @@ from src.strategies.short_answer_strategy import ShortAnswerStrategy
 from src.strategies.qa_voice_strategy import QAVoiceStrategy
 from src.strategies.unsupported_image_strategy import UnsupportedImageStrategy
 from src.strategies.no_reply_strategy import NoReplyStrategy
-from rich.progress import track
+from rich.progress import Progress, TextColumn, BarColumn, TimeElapsedColumn, MofNCompleteColumn
 
 # ==============================================================================
 # 全局可用策略列表
@@ -163,11 +163,24 @@ async def run_auto_mode(browser_service: DriverService, ai_service: AIService, c
    else:
        logger.always_print(f"共发现 {len(pending_tasks)} 个待完成任务。")
 
-       for task in track(pending_tasks, description="正在处理课程任务..."):
-           logger.always_print(f"\n正在处理任务: [单元 {task['unit_name']}] - {task['task_name']}")
-           await browser_service.navigate_to_task(task['course_url'], task['unit_index'], task['task_index'])
-           await run_strategy_on_current_page(browser_service, ai_service, cache_service)
-           await asyncio.sleep(2)
+       # 使用 rich.progress.Progress 上下文管理器来完全控制进度条和日志输出
+       progress_columns = [
+           TextColumn("[progress.description]{task.description}"),
+           BarColumn(),
+           MofNCompleteColumn(),
+           TextColumn("•"),
+           TimeElapsedColumn(),
+       ]
+       
+       # transient=True 会在完成后移除进度条，保持终端清洁
+       with Progress(*progress_columns, console=console, transient=True) as progress:
+           # 使用 progress.track 迭代任务，它会自动处理进度更新
+           for task in progress.track(pending_tasks, description="正在处理课程任务..."):
+               # 使用 progress.log 在进度条上方打印状态信息，避免冲突
+               progress.log(f"处理中: [单元 {task['unit_name']}] - {task['task_name']}")
+               await browser_service.navigate_to_task(task['course_url'], task['unit_index'], task['task_index'])
+               await run_strategy_on_current_page(browser_service, ai_service, cache_service)
+               await asyncio.sleep(2)
 
        logger.always_print("\n所有待完成任务处理完毕！")
 

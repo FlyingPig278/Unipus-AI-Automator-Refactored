@@ -109,17 +109,24 @@ class QAVoiceStrategy(BaseVoiceStrategy):
                 prompt = ""
                 if is_oral_recitation_type:
                     main_question_locator = container.locator(".score-sentence-container .component-htmlview")
-                    keywords_locator = container.locator(".sentence-container")
-                    main_question = (await main_question_locator.text_content(timeout=5000) or "").strip()
-                    keywords = (await keywords_locator.text_content(timeout=5000) or "").strip()
+                    main_question = (await main_question_locator.text_content() or "").strip()
 
-                    if not keywords:
+                    content_elements = await container.locator(".sentence-container .media-sentenceContainer").all()
+                    all_content_texts = []
+                    for elem in content_elements:
+                        text = (await elem.text_content() or "").strip()
+                        if text:
+                            all_content_texts.append(text)
+                    keywords_text = "\n".join(all_content_texts)
+
+                    if not keywords_text:
                         logger.error("在当前容器中找不到关键词笔记，中止。")
                         should_abort_page = True
                         break
+                    
                     logger.info(f"提取到主问题: '{main_question}'")
-                    logger.info(f"提取到关键词: '{keywords}'")
-                    prompt = prompts.ORAL_RECITATION_PROMPT.format(main_question=main_question, keywords=keywords)
+                    logger.info(f"提取到关键词: '{keywords_text}'")
+                    prompt = prompts.ORAL_RECITATION_PROMPT.format(main_question=main_question, keywords=keywords_text)
                 else:
                     question_locator = container.locator(".oral-personal-state-oral-container .oral-personal-state-sentence-container .component-htmlview")
                     logger.info("正在并发提取当前题目信息...")

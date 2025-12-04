@@ -1,6 +1,7 @@
 # src/services/cache_service.py
 import json
 import os
+from src.utils import logger
 
 class CacheService:
     """
@@ -10,7 +11,7 @@ class CacheService:
     def __init__(self, cache_file_path: str = "answer_cache.json"):
         self.cache_file_path = cache_file_path
         self.cache = self._load_cache()
-        print(f"缓存服务已初始化，使用文件: {self.cache_file_path}")
+        logger.info(f"缓存服务已初始化，使用文件: {self.cache_file_path}")
 
     def _load_cache(self) -> dict:
         """从文件加载缓存。"""
@@ -22,7 +23,7 @@ class CacheService:
                         return {}
                     return json.loads(content)
             except (json.JSONDecodeError, IOError) as e:
-                print(f"警告：读取缓存文件 {self.cache_file_path} 时出错: {e}。将创建新的空缓存。")
+                logger.warning(f"读取缓存文件 {self.cache_file_path} 时出错: {e}。将创建新的空缓存。")
                 return {}
         return {}
 
@@ -32,7 +33,7 @@ class CacheService:
             with open(self.cache_file_path, 'w', encoding='utf-8') as f:
                 json.dump(self.cache, f, ensure_ascii=False, indent=2)
         except IOError as e:
-            print(f"错误：写入缓存文件 {self.cache_file_path} 时失败: {e}")
+            logger.error(f"写入缓存文件 {self.cache_file_path} 时失败: {e}")
 
     def get_task_page_cache(self, breadcrumb_parts: list[str]) -> dict | None:
         """
@@ -63,10 +64,10 @@ class CacheService:
         current_level['answers'] = answers_list
         
         self._save_cache()
-        print(f"页面答案已按顺序整体保存到缓存路径: {' -> '.join(breadcrumb_parts)}")
+        logger.info(f"页面答案已按顺序整体保存到缓存路径: {' -> '.join(breadcrumb_parts)}")
 
     def clear_cache(self):
         """清除所有缓存。"""
         self.cache = {}
         self._save_cache()
-        print("缓存已清除。")
+        logger.info("缓存已清除。")

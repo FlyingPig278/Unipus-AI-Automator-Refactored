@@ -48,30 +48,31 @@ class ShortAnswerStrategy(BaseStrategy):
             
             is_table_question = "|:---:" in additional_material
 
+            # 统一提取所有子问题题干，无论是否为表格题
+            question_containers = await self.driver_service.page.locator(".question-inputbox").all()
+            sub_questions = []
+            for container in question_containers:
+                sub_q_text = ""
+                try:
+                    content = await container.locator(".question-inputbox-header .component-htmlview").text_content(timeout=1000)
+                    if content:
+                        sub_q_text = content.strip()
+                except PlaywrightError:
+                    logger.warning("一个简答题的 header 为空，将视其题目内容为空字符串。")
+                sub_questions.append(sub_q_text)
+            
+            sub_questions_text = "\n".join([f"{i+1}. {q}" for i, q in enumerate(sub_questions) if q])
+            logger.info(f"提取到 {len(sub_questions)} 个简答题的题干。")
+
             if is_table_question:
                 logger.info("检测到表格题型，使用专用的表格Prompt。")
                 prompt = prompts.TABLE_SHORT_ANSWER_PROMPT.format(
                     direction_text=direction_text,
-                    article_text=full_context
+                    article_text=full_context,
+                    sub_questions=sub_questions_text
                 )
             else:
                 logger.info("使用标准简答题Prompt。")
-                question_containers = await self.driver_service.page.locator(".question-inputbox").all()
-                sub_questions = []
-                for container in question_containers:
-                    sub_q_text = ""
-                    try:
-                        # 为 text_content 设置一个短的超时，以处理 header 为空的情况
-                        content = await container.locator(".question-inputbox-header .component-htmlview").text_content(timeout=1000)
-                        if content:
-                            sub_q_text = content.strip()
-                    except PlaywrightError:
-                        logger.warning("一个简答题的 header 为空，将视其题目内容为空字符串。")
-                    sub_questions.append(sub_q_text)
-                
-                sub_questions_text = "\n".join([f"{i+1}. {q}" for i, q in enumerate(sub_questions)])
-                logger.info(f"提取到 {len(sub_questions)} 个简答题:\n{sub_questions_text}")
-
                 article_section = f"以下是文章或听力原文内容:\n{full_context}\n\n" if full_context else ""
                 prompt = prompts.SHORT_ANSWER_PROMPT.format(
                     direction_text=direction_text,

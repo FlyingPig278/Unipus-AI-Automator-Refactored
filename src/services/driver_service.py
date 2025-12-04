@@ -7,6 +7,7 @@ import urllib.parse  # 新增导入
 from playwright.async_api import async_playwright, Playwright, Browser, Page, Locator, Error as PlaywrightError
 
 import src.config as config  # 导入我们的配置
+from src.utils import logger
 
 
 class DriverService:
@@ -17,11 +18,11 @@ class DriverService:
         self.playwright: Playwright | None = None
         self.browser: Browser | None = None
         self.page: Page | None = None
-        print("Playwright驱动服务已初始化（尚未启动）。")
+        logger.info("Playwright驱动服务已初始化（尚未启动）。")
 
     async def start(self, headless=False):
         """启动Playwright，并创建一个新的浏览器页面。"""
-        print("正在启动Playwright浏览器...")
+        logger.info("正在启动Playwright浏览器...")
         self.playwright = await async_playwright().start()
         self.browser = await self.playwright.chromium.launch(headless=headless)
         # 在创建上下文时直接授予麦克风权限
@@ -30,73 +31,73 @@ class DriverService:
         self.page = await context.new_page()
         # self.page = await self.browser.new_page()
         self.page.set_default_timeout(30000) # 设置30秒默认超时
-        print("Playwright浏览器和新页面已成功启动。")
+        logger.info("Playwright浏览器和新页面已成功启动。")
 
     async def stop(self):
         """优雅地关闭浏览器和Playwright实例。"""
-        print("正在关闭浏览器...")
+        logger.info("正在关闭浏览器...")
         if self.page and self.page.context:
-            print("正在保存Playwright追踪文件...")
+            logger.info("正在保存Playwright追踪文件...")
             await self.page.context.tracing.stop(path="trace.zip")  # 保存追踪文件到项目根目录
-            print("Playwright追踪文件已保存为 trace.zip。")
+            logger.info("Playwright追踪文件已保存为 trace.zip。")
         if self.browser:
             await self.browser.close()
         if self.playwright:
             await self.playwright.stop()
-        print("浏览器已关闭。")
+        logger.info("浏览器已关闭。")
 
     async def login(self):
         """执行完整的登录流程，并导航到课程列表页面。"""
-        print("正在导航到登录页面...")
+        logger.info("正在导航到登录页面...")
         await self.page.goto(config.LOGIN_URL)
         
-        print("正在勾选用户协议...")
+        logger.info("正在勾选用户协议...")
         await self.page.get_by_role("checkbox", name="我已阅读并同意").check()
 
-        print("正在输入凭据...")
+        logger.info("正在输入凭据...")
         await self.page.get_by_role("textbox", name="手机号/邮箱/用户名").fill(config.USERNAME)
         await self.page.get_by_role("textbox", name="密码").fill(config.PASSWORD)
         
-        print("正在点击登录按钮...")
+        logger.info("正在点击登录按钮...")
         await self.page.get_by_role("button", name="登录").click()
         
         try:
             await self.page.get_by_role("button", name="知道了").click(timeout=3000)
-            print("已点击“知道了”弹窗。")
+            logger.info("已点击“知道了”弹窗。")
         except PlaywrightError:
-            print("未找到“知道了”弹窗，跳过。")
+            logger.info("未找到“知道了”弹窗，跳过。")
 
-        print("等待主页面加载...")
+        logger.info("等待主页面加载...")
         try:
             await self.page.get_by_text("我的课程").click()
-            print("已点击“我的课程”。")
+            logger.info("已点击“我的课程”。")
         except PlaywrightError:
-            print("错误：登录后未找到“我的课程”按钮，无法继续。")
+            logger.error("登录后未找到“我的课程”按钮，无法继续。")
             raise
             
-        print("登录流程完毕。")
+        logger.info("登录流程完毕。")
 
     async def get_course_list(self) -> list[str]:
         """获取“我的课程”页面上的所有课程名称。"""
-        print("正在获取课程列表...")
+        logger.info("正在获取课程列表...")
         try:
             await self.page.locator(".course-name").first.wait_for() # 等待课程名称的父容器出现
             course_names = await self.page.locator(".course-name").all_text_contents()
             return [name.strip() for name in course_names if name.strip()]
         except PlaywrightError:
-            print("错误：未能找到课程列表。")
+            logger.error("未能找到课程列表。")
             return []
 
     async def select_course_by_index(self, index: int):
         """根据索引点击指定的课程卡片。"""
         try:
             course_card_locator = self.page.locator(".course-card-stu").nth(index)
-            print(f"正在进入第 {index + 1} 门课程...")
+            logger.info(f"正在进入第 {index + 1} 门课程...")
             await course_card_locator.click()
             await self.page.locator(config.UNIT_TABS).first.wait_for()
-            print("已成功进入课程页面。")
+            logger.info("已成功进入课程页面。")
         except PlaywrightError:
-            print("错误：点击课程后，未能等到课程单元加载。")
+            logger.error("点击课程后，未能等到课程单元加载。")
             raise
 
     async def get_media_source_and_type(self, search_scope: Locator | Page | None = None) -> tuple[str | None, str | None]:
@@ -131,14 +132,14 @@ class DriverService:
             """
             return await self.page.evaluate(js_script)
         except Exception as e:
-            print(f"提取完整目录树时发生错误: {e}")
+            logger.error(f"提取完整目录树时发生错误: {e}")
             return []
 
     async def get_auth_info(self) -> dict:
         """
         通过拦截网络请求，从浏览器环境中获取动态的认证信息。
         """
-        print("正在设置网络监听以捕获认证信息...")
+        logger.info("正在设置网络监听以捕获认证信息...")
         auth_info = {"Authorization": None, "userId": None, "auth_header": None}
 
         # 创建一个 Future 对象，用于在信息捕获后发出信号
@@ -149,13 +150,13 @@ class DriverService:
             if "zt.unipus.cn/soe/api" in request.url and request.headers.get("auth"):
                 if not auth_info["auth_header"]:
                     auth_info["auth_header"] = request.headers["auth"]
-                    print("成功捕获 'auth' 头。")
+                    logger.info("成功捕获 'auth' 头。")
             
             # 捕获 Authorization 头 (用于 ucontent.unipus.cn)
             if "ucontent.unipus.cn" in request.url and request.headers.get("authorization"):
                 if not auth_info["Authorization"]:
                     auth_info["Authorization"] = request.headers["authorization"]
-                    print("成功捕获 'Authorization' 头。")
+                    logger.info("成功捕获 'Authorization' 头。")
 
             # 如果两个都找到了，就完成Future
             if auth_info["auth_header"] and auth_info["Authorization"] and not headers_found.done():
@@ -165,11 +166,11 @@ class DriverService:
 
         try:
             # 刷新页面以触发各种API请求，从而让我们的监听器捕获到所需信息
-            print("将重新加载页面以触发网络请求...")
+            logger.info("将重新加载页面以触发网络请求...")
             await self.page.reload(wait_until="networkidle")
             
         except Exception as e:
-            print(f"网络拦截或页面刷新时发生错误: {e}")
+            logger.error(f"网络拦截或页面刷新时发生错误: {e}")
         
         self.page.remove_listener("request", intercept_request)
 
@@ -185,10 +186,10 @@ class DriverService:
                     user_id_from_cookie = cookie_json.get("distinct_id") or cookie_json.get("$identity_login_id")
                     if user_id_from_cookie:
                         auth_info["userId"] = user_id_from_cookie
-                        print("成功从sensorsdata2015jssdkcross Cookie中获取userId。")
+                        logger.info("成功从sensorsdata2015jssdkcross Cookie中获取userId。")
                         break
         except Exception as e:
-            print(f"从Cookie中解析userId时出错: {e}")
+            logger.error(f"从Cookie中解析userId时出错: {e}")
 
         # 如果仍然没有userId，尝试从localStorage获取作为最后的补充
         try:
@@ -196,32 +197,32 @@ class DriverService:
                 user_id_from_ls = await self.page.evaluate("() => localStorage.getItem('openId') || (window.vuex_state && window.vuex_state.userId)")
                 if user_id_from_ls:
                     auth_info["userId"] = user_id_from_ls
-                    print("成功从localStorage获取userId。")
+                    logger.info("成功从localStorage获取userId。")
         except Exception:
             pass # 忽略错误
 
-        print(f"获取到的认证信息: {auth_info}")
+        logger.info(f"获取到的认证信息: {auth_info}")
         if not all([auth_info["Authorization"], auth_info["auth_header"], auth_info["userId"]]):
-             print("警告：未能获取到完整的认证信息，API调用可能会失败。")
+             logger.warning("未能获取到完整的认证信息，API调用可能会失败。")
              
         return auth_info
 
     async def get_pending_tasks(self) -> list:
         """获取当前课程页面中所有未完成的必修任务。"""
-        print("正在获取待完成任务列表...")
+        logger.info("正在获取待完成任务列表...")
         pending_tasks = []
         current_course_url = self.page.url
         try:
             await self.page.locator(config.UNIT_TABS).first.wait_for()
             units_locators = await self.page.locator(config.UNIT_TABS).all()
         except PlaywrightError:
-            print("未能定位到课程单元列表，请确保当前页面是课程主页。")
+            logger.error("未能定位到课程单元列表，请确保当前页面是课程主页。")
             return []
 
         for unit_locator in units_locators:
             unit_name = (await unit_locator.text_content()).strip().split('\n')[0]
             
-            print(f"正在检查单元: {unit_name}")
+            logger.info(f"正在检查单元: {unit_name}")
             try:
                 unit_index = await unit_locator.get_attribute("data-index")
                 if "tabActive" not in (await unit_locator.get_attribute("class")):
@@ -256,17 +257,17 @@ class DriverService:
                             "course_url": current_course_url
                         })
             except Exception as e:
-                print(f"处理单元 '{unit_name}' 时出错: {e}")
+                logger.error(f"处理单元 '{unit_name}' 时出错: {e}")
                 if unit_name=='Unit 5':
                     raise
-        print(f"待完成任务列表获取完毕，共 {len(pending_tasks)} 个任务。")
+        logger.info(f"待完成任务列表获取完毕，共 {len(pending_tasks)} 个任务。")
         return pending_tasks
 
     async def navigate_to_task(self, course_url: str, unit_index: str, task_index: int):
         """
         导航到指定单元和索引的任务页面，并在导航后处理常见弹窗。
         """
-        print(f"正在导航到单元 {unit_index}，任务索引 {task_index}...")
+        logger.info(f"正在导航到单元 {unit_index}，任务索引 {task_index}...")
 
         # 1. 重新回到课程主页，确保页面状态一致
         await self.page.goto(course_url)
@@ -278,13 +279,13 @@ class DriverService:
             await unit_locator.click()
             # 兼容性：确保等待到正确的单元变为激活状态
             await self.page.locator(f'[data-index="{unit_index}"][class*="tabActive"]').wait_for()
-            print(f"已确认单元 {unit_index} 已激活。")
+            logger.info(f"已确认单元 {unit_index} 已激活。")
 
         except PlaywrightError:
-            print(f"错误：在导航到单元 {unit_index} 时超时，可能未找到单元或页面结构已更改。")
+            logger.error(f"在导航到单元 {unit_index} 时超时，可能未找到单元或页面结构已更改。")
             raise
         except Exception as e:
-            print(f"错误：在导航到单元 {unit_index} 时发生异常: {e}")
+            logger.error(f"在导航到单元 {unit_index} 时发生异常: {e}")
             raise
 
         # 3. 定位并点击指定的任务
@@ -294,18 +295,18 @@ class DriverService:
             # 点击第 task_index 个任务
             await asyncio.sleep(0.3) # TODO:暂不明确应等待什么元素
             await task_elements_locators.nth(task_index).click()
-            print(f"已进入任务索引 {task_index} 的任务页面。")
+            logger.info(f"已进入任务索引 {task_index} 的任务页面。")
 
             # 等待题目加载标记，针对服务器不稳定，增加等待时间
             try:
                 await self.page.wait_for_selector(config.QUESTION_LOADING_MARKER, timeout=20000)
             except PlaywrightError:
-                print("警告: 任务页面加载后，未在20秒内找到题目加载标记。")
+                logger.warning("任务页面加载后，未在20秒内找到题目加载标记。")
 
             # 调用通用的弹窗处理器
             await self.handle_common_popups()
         except Exception as e:
-            print(f"错误：在进入任务索引 {task_index} 时失败: {e}")
+            logger.error(f"在进入任务索引 {task_index} 时失败: {e}")
             raise
     
     async def handle_common_popups(self):
@@ -314,14 +315,14 @@ class DriverService:
         try:
             # 使用非常短的超时，如果弹窗在0.5秒内没出现，就立即跳过
             await self.page.locator(".iKnow").click(timeout=500)
-            print("已关闭“鼠标取词”新手引导。")
+            logger.info("已关闭“鼠标取词”新手引导。")
         except PlaywrightError:
             pass  # 0.5秒内未找到，说明它不存在，直接继续
 
         # 2. 处理其他可能出现的、需要更长等待时间的弹窗
         try:
             await self.page.get_by_role("button", name="我知道了").click(timeout=3000)
-            print("已关闭“任务信息”等弹窗。")
+            logger.info("已关闭“任务信息”等弹窗。")
         except PlaywrightError:
             pass
 			
@@ -330,19 +331,19 @@ class DriverService:
         """处理点击提交后的“最终确认”弹窗。"""
         try:
             await self.page.get_by_role("button", name="确 定").click(timeout=1500)
-            print("已点击“最终确认提交”弹窗。")
+            logger.info("已点击“最终确认提交”弹窗。")
         except PlaywrightError:
             pass
 
     async def _navigate_to_answer_analysis_page(self):
         """从“答题小结”页面进入“答案解析”页面。"""
-        print("正在导航到答案解析页面...")
+        logger.info("正在导航到答案解析页面...")
         try:
             await self.page.locator(config.SUMMARY_QUESTION_NUMBER).first.click()
             await self.page.locator(config.QUESTION_WRAP).first.wait_for()
-            print("已进入答案解析页面。")
+            logger.info("已进入答案解析页面。")
         except PlaywrightError:
-            print("错误：未能进入答案解析页面。")
+            logger.error("未能进入答案解析页面。")
             raise
 
     async def extract_all_correct_answers_from_analysis_page(self) -> list[str]:
@@ -350,14 +351,14 @@ class DriverService:
         从答案解析页面提取所有正确答案，并将它们平铺到一个列表中。
         适用于单选题（一页多题）和多选题/拖拽题（一页一题）的场景。
         """
-        print("正在提取所有题目的正确答案...")
+        logger.info("正在提取所有题目的正确答案...")
         all_answers = []
         try:
             # 找到页面上所有包含答案解析的区块
             analysis_wraps = await self.page.locator(".component-analysis").all()
             
             if not analysis_wraps:
-                print("未找到任何 .component-analysis 区块，跳过答案提取。")
+                logger.info("未找到任何 .component-analysis 区块，跳过答案提取。")
                 return []
 
             for i, analysis_locator in enumerate(analysis_wraps):
@@ -372,10 +373,10 @@ class DriverService:
                 if answers:
                     all_answers.extend(answers)
             
-            print(f"已提取到所有正确答案: {all_answers}")
+            logger.info(f"已提取到所有正确答案: {all_answers}")
             
         except Exception as e:
-            print(f"提取正确答案时发生错误: {e}")
+            logger.error(f"提取正确答案时发生错误: {e}")
             
         return all_answers
 
@@ -384,14 +385,14 @@ class DriverService:
         [新增] 从答案解析页面为“填空题”提取所有正确答案。
         该方法能智能处理答对和答错两种情况下，正确答案在DOM中的不同位置。
         """
-        print("正在为填空题从解析页面提取所有正确答案...")
+        logger.info("正在为填空题从解析页面提取所有正确答案...")
         all_answers = []
         
         # 定位到所有填空的容器
         blank_containers = await self.page.locator(".fe-scoop").all()
         
         if not blank_containers:
-            print("警告：在解析页面未找到任何填空题容器 (.fe-scoop)。")
+            logger.warning("在解析页面未找到任何填空题容器 (.fe-scoop)。")
             return []
 
         for i, container in enumerate(blank_containers):
@@ -409,21 +410,23 @@ class DriverService:
                     correct_answer = (input_value or "").strip()
                 
                 all_answers.append(correct_answer)
-                print(f"  - 填空 {i+1}: 找到答案 '{correct_answer}'")
+                logger.info(f"  - 填空 {i+1}: 找到答案 '{correct_answer}'")
 
             except Exception as e:
-                print(f"  - 提取第 {i+1} 个填空题答案时出错: {e}")
+                logger.error(f"  - 提取第 {i+1} 个填空题答案时出错: {e}")
                 all_answers.append("") # 出错时添加空字符串以保持顺序
 
-        print(f"已提取到所有填空题答案: {all_answers}")
+        logger.info(f"已提取到所有填空题答案: {all_answers}")
         return all_answers
 
     async def _extract_additional_material_for_ai(self) -> str:
         """
         从页面中提取所有额外材料（纯文本或表格），用于补充给AI的Prompt。
-        采用更健णुओं的、基于Playwright定位器的解析方法。
+        此版本经过重构，可以处理单个材料容器中的多个表格，并为隐式空白生成编号。
         """
         all_extracted_materials = []
+        blank_counter = 1  # 为页面上所有隐式空白提供一个统一的计数器
+        
         material_containers = await self.page.locator(
             ".layout-material-container .question-common-abs-material .text-material-wrapper .component-htmlview"
         ).all()
@@ -436,180 +439,86 @@ class DriverService:
                 if not await material_container.is_visible(timeout=500):
                     continue
     
-                # 优先尝试定位表格
-                table_locator = material_container.locator("table").first
-                if await table_locator.is_visible():
-                    print(f"检测到第 {i+1} 个材料容器包含表格，开始解析为Markdown...")
-                    markdown_table = "\n\n以下是表格内容：\n\n"
+                # 在容器内查找所有表格
+                table_locators = await material_container.locator("table.unipus-table").all()
     
-                    # 获取所有行
-                    all_rows = await table_locator.locator("tr").all()
-                    if not all_rows:
-                        continue
-                    
-                    # 智能判断表头位置
-                    header_row_index = 0
-                    
-                    # 方法1: 检查是否有thead
-                    thead_rows = await table_locator.locator("thead tr").all()
-                    if thead_rows:
-                        # 如果thead有内容，使用thead第一行
-                        header_row = thead_rows[0]
-                        # 检查thead行是否真的有内容
-                        header_cells = await header_row.locator("th, td").all()
-                        has_content = False
-                        for cell in header_cells:
-                            text = html.unescape(await cell.text_content()).strip()
-                            if text and text != "&nbsp;":
-                                has_content = True
-                                break
-                        
-                        if has_content:
-                            # thead有内容，使用thead行作为表头
-                            header_cells = await header_row.locator("th, td").all()
-                            headers = []
-                            for cell in header_cells:
-                                text = html.unescape(await cell.text_content()).strip()
-                                headers.append(text if text and text != "&nbsp;" else " ")
-                            
-                            # 数据行从tbody开始
-                            data_rows = await table_locator.locator("tbody tr").all()
-                            if not data_rows:
-                                # 如果没有tbody，则使用thead之后的所有行
-                                data_rows = all_rows[1:]
-                        else:
-                            # thead没有实际内容，尝试在tbody中找表头
-                            tbody_rows = await table_locator.locator("tbody tr").all()
-                            if tbody_rows:
-                                header_row = tbody_rows[0]
-                                header_cells = await header_row.locator("th, td").all()
-                                headers = []
-                                for cell in header_cells:
-                                    text = html.unescape(await cell.text_content()).strip()
-                                    headers.append(text if text and text != "&nbsp;" else " ")
-                                
-                                data_rows = tbody_rows[1:] if len(tbody_rows) > 1 else []
-                            else:
-                                # 如果没有tbody，尝试使用第一行
-                                header_row = all_rows[0]
-                                header_cells = await header_row.locator("th, td").all()
-                                headers = []
-                                for cell in header_cells:
-                                    text = html.unescape(await cell.text_content()).strip()
-                                    headers.append(text if text and text != "&nbsp;" else " ")
-                                
-                                data_rows = all_rows[1:]
-                    else:
-                        # 没有thead，尝试在tbody中找表头
-                        tbody_rows = await table_locator.locator("tbody tr").all()
-                        if tbody_rows:
-                            # 检查tbody第一行是否有内容
-                            first_row_cells = await tbody_rows[0].locator("th, td").all()
-                            has_content = False
-                            for cell in first_row_cells:
-                                text = html.unescape(await cell.text_content()).strip()
-                                if text and text != "&nbsp;":
-                                    has_content = True
-                                    break
-                            
-                            if has_content:
-                                # tbody第一行有内容，作为表头
-                                header_row = tbody_rows[0]
-                                header_cells = await header_row.locator("th, td").all()
-                                headers = []
-                                for cell in header_cells:
-                                    text = html.unescape(await cell.text_content()).strip()
-                                    headers.append(text if text and text != "&nbsp;" else " ")
-                                
-                                data_rows = tbody_rows[1:]
-                            else:
-                                # tbody第一行是空的，尝试使用第二行
-                                if len(tbody_rows) > 1:
-                                    header_row = tbody_rows[1]
-                                    header_cells = await header_row.locator("th, td").all()
-                                    headers = []
-                                    for cell in header_cells:
-                                        text = html.unescape(await cell.text_content()).strip()
-                                        headers.append(text if text and text != "&nbsp;" else " ")
-                                    
-                                    data_rows = tbody_rows[2:]
-                                else:
-                                    # 只有一行，且是空的，使用默认表头
-                                    header_cells = await tbody_rows[0].locator("th, td").all()
-                                    headers = [f"列{i+1}" for i in range(len(header_cells))]
-                                    data_rows = []
-                        else:
-                            # 没有tbody，使用所有行
-                            # 检查第一行是否有内容
-                            first_row_cells = await all_rows[0].locator("th, td").all()
-                            has_content = False
-                            for cell in first_row_cells:
-                                text = html.unescape(await cell.text_content()).strip()
-                                if text and text != "&nbsp;":
-                                    has_content = True
-                                    break
-                            
-                            if has_content:
-                                # 第一行有内容，作为表头
-                                header_row = all_rows[0]
-                                header_cells = await header_row.locator("th, td").all()
-                                headers = []
-                                for cell in header_cells:
-                                    text = html.unescape(await cell.text_content()).strip()
-                                    headers.append(text if text and text != "&nbsp;" else " ")
-                                
-                                data_rows = all_rows[1:]
-                            else:
-                                # 第一行是空的，尝试使用第二行
-                                if len(all_rows) > 1:
-                                    header_row = all_rows[1]
-                                    header_cells = await header_row.locator("th, td").all()
-                                    headers = []
-                                    for cell in header_cells:
-                                        text = html.unescape(await cell.text_content()).strip()
-                                        headers.append(text if text and text != "&nbsp;" else " ")
-                                    
-                                    data_rows = all_rows[2:]
-                                else:
-                                    # 只有一行，且是空的，使用默认表头
-                                    header_cells = await all_rows[0].locator("th, td").all()
-                                    headers = [f"列{i+1}" for i in range(len(header_cells))]
-                                    data_rows = []
-    
-                    # 构建Markdown表格
-                    markdown_table += f"| {' | '.join(headers)} |\n"
-                    markdown_table += f"|{'|'.join([':---:'] * len(headers))}|\n"
-    
-                    # 处理数据行
-                    for row in data_rows:
-                        row_data = []
-                        cells = await row.locator("td, th").all()
-                        for cell in cells:
-                            placeholder = cell.locator("span._placeHolder_")
-                            if await placeholder.count() > 0:
-                                data_index = await placeholder.first.get_attribute("data-index")
-                                row_data.append(f"[Blank {data_index}]")
-                            else:
-                                text = html.unescape(await cell.text_content()).strip()
-                                row_data.append(text if text and text != "&nbsp;" else " ")
-                        markdown_table += f"| {' | '.join(row_data)} |\n"
-                    
-                    all_extracted_materials.append(markdown_table)
-    
-                # 如果没有表格，则作为纯文本处理
+                if table_locators:
+                    logger.info(f"检测到第 {i+1} 个材料容器包含 {len(table_locators)} 个表格，开始解析...")
+                    for table_locator in table_locators:
+                        markdown_table, blank_counter = await self._parse_table_to_markdown(table_locator, blank_counter)
+                        if markdown_table.strip():
+                           all_extracted_materials.append("以下是表格内容：" + markdown_table)
                 else:
-                    print(f"检测到第 {i+1} 个材料容器包含纯文本文本，开始提取...")
+                    # 如果没有找到表格，则作为纯文本处理
+                    logger.info(f"检测到第 {i+1} 个材料容器包含纯文本文本，开始提取...")
                     paragraphs = await material_container.locator("p").all()
+                    full_text = ""
                     if not paragraphs:
-                        full_text = html.unescape(await material_container.text_content()).strip()
+                        full_text = html.unescape(await material_container.text_content() or "").strip()
                     else:
-                        lines = [html.unescape(await p.text_content()).strip() for p in paragraphs]
-                        full_text = "\n".join(lines)
+                        lines = [html.unescape(await p.text_content() or "").strip() for p in paragraphs]
+                        full_text = "\n".join(filter(None, lines))
                     
                     if full_text:
-                        all_extracted_materials.append("\n\n以下是额外文本材料：\n\n" + full_text)
+                        all_extracted_materials.append("以下是额外文本材料：\n" + full_text)
     
             except Exception as e:
-                print(f"警告：提取第 {i+1} 个额外材料时发生错误: {e}")
+                logger.warning(f"提取第 {i+1} 个额外材料时发生错误: {e}")
                 
         return "\n\n".join(all_extracted_materials)
+
+    async def _parse_table_to_markdown(self, table_locator: Locator, blank_start_index: int) -> tuple[str, int]:
+        """将单个表格的Locator解析为Markdown格式，智能处理表头，并为数据行中的空白生成编号。"""
+        markdown_table = "\n\n"
+        blank_counter = blank_start_index
+        
+        all_rows = await table_locator.locator("tr").all()
+        if not all_rows:
+            return "", blank_counter
+
+        headers = []
+        data_rows = []
+
+        # --- 完整的智能表头检测逻辑 (保留用户要求) ---
+        thead_rows = await table_locator.locator("thead tr").all()
+        if thead_rows and any([html.unescape(await cell.text_content() or "").strip() for cell in await thead_rows[0].locator("th, td").all()]):
+            header_row_loc = thead_rows[0]
+            data_rows = await table_locator.locator("tbody tr").all()
+        else:
+            tbody_rows = await table_locator.locator("tbody tr").all()
+            if tbody_rows and any([html.unescape(await cell.text_content() or "").strip() for cell in await tbody_rows[0].locator("th, td").all()]):
+                header_row_loc = tbody_rows[0]
+                data_rows = tbody_rows[1:]
+            elif all_rows:
+                header_row_loc = all_rows[0]
+                data_rows = all_rows[1:]
+            else: # 表格为空
+                return "", blank_counter
+        
+        header_cells = await header_row_loc.locator("th, td").all()
+        headers = [(html.unescape(await cell.text_content() or "").strip()) for cell in header_cells]
+        # --- 智能表头检测结束 ---
+
+        # 构建Markdown表头 (不对表头应用[Blank]逻辑)
+        markdown_table += f"| {' | '.join(h if h and h != '&nbsp;' else ' ' for h in headers)} |\n"
+        markdown_table += f"|{'|'.join([':---:'] * len(headers))}|\n"
+        
+        # 处理数据行 (只在此处应用[Blank]逻辑)
+        for row in data_rows:
+            row_data = []
+            cells = await row.locator("td, th").all()
+            for cell in cells:
+                placeholder = cell.locator("span._placeHolder_")
+                if await placeholder.count() > 0:
+                    data_index = await placeholder.first.get_attribute("data-index")
+                    row_data.append(f"[Blank {data_index}]")
+                else:
+                    text = html.unescape(await cell.text_content() or "").strip()
+                    if not text or text == "&nbsp;":
+                        row_data.append(f"[Blank {blank_counter}]")
+                        blank_counter += 1
+                    else:
+                        row_data.append(text)
+            markdown_table += f"| {' | '.join(row_data)} |\n"
+            
+        return markdown_table, blank_counter

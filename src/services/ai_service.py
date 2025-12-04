@@ -14,6 +14,7 @@ from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUs
 
 import src.config as config
 from src import prompts
+from src.utils import logger
 
 
 class LocalTTSEngine:
@@ -32,7 +33,7 @@ class LocalTTSEngine:
     async def ensure_model_exists(self):
         """检查并自动下载所需的TTS模型。"""
         if not self.model_path.exists() or not self.model_config_path.exists():
-            print(f"📥 首次使用，需要下载Piper TTS模型: {self.model_name}")
+            logger.info(f"📥 首次使用，需要下载Piper TTS模型: {self.model_name}")
             await self._download_model()
 
     async def _download_model(self):
@@ -48,17 +49,17 @@ class LocalTTSEngine:
 
             base_url = f"https://huggingface.co/rhasspy/piper-voices/resolve/main/{lang}/{locale}/{voice}/{quality}/{self.model_name}"
             
-            print(f"根据模型名称动态构建下载URL: {base_url}")
+            logger.info(f"根据模型名称动态构建下载URL: {base_url}")
             
             # 下载模型文件
-            print(f"正在下载模型: {self.model_name}.onnx...")
+            logger.info(f"正在下载模型: {self.model_name}.onnx...")
             process = await asyncio.create_subprocess_shell(
                 f'curl -L -o "{self.model_path}" "{base_url}.onnx"'
             )
             await process.wait()
             
             # 下载模型配置文件
-            print(f"正在下载模型配置文件: {self.model_name}.onnx.json...")
+            logger.info(f"正在下载模型配置文件: {self.model_name}.onnx.json...")
             process = await asyncio.create_subprocess_shell(
                 f'curl -L -o "{self.model_config_path}" "{base_url}.onnx.json"'
             )
@@ -66,12 +67,12 @@ class LocalTTSEngine:
             
             if self.model_path.exists() and self.model_path.stat().st_size > 1000 and \
                self.model_config_path.exists() and self.model_config_path.stat().st_size > 100:
-                print("✅ 模型下载和文件大小校验完成。")
+                logger.info("✅ 模型下载和文件大小校验完成。")
             else:
                 raise FileNotFoundError("模型文件下载失败或文件大小异常。请检查.models文件夹下的文件。")
                 
         except Exception as e:
-            print(f"❌ 模型下载失败: {e}")
+            logger.error(f"模型下载失败: {e}")
             # 如果下载失败，删除可能已创建的损坏文件
             if self.model_path.exists(): self.model_path.unlink()
             if self.model_config_path.exists(): self.model_config_path.unlink()
@@ -88,7 +89,7 @@ class LocalTTSEngine:
         try:
             await self.ensure_model_exists()
 
-            print(f"正在使用Piper TTS合成语音 (语速: {length_scale}, noise_scale: {noise_scale}, noise_w: {noise_w}): '{text[:30]}...'")
+            logger.info(f"正在使用Piper TTS合成语音 (语速: {length_scale}, noise_scale: {noise_scale}, noise_w: {noise_w}): '{text[:30]}...'")
             piper_command = [
                 "piper", 
                 "--model", str(self.model_path),
@@ -109,16 +110,16 @@ class LocalTTSEngine:
                 with open(output_path, "rb") as f:
                     audio_bytes = f.read()
                 
-                print(f"Piper TTS 语音合成成功，返回 {len(audio_bytes)} 字节数据。")
+                logger.info(f"Piper TTS 语音合成成功，返回 {len(audio_bytes)} 字节数据。")
                 return audio_bytes
             else:
                 raise Exception(f"Piper执行失败: {stderr.decode('utf-8', errors='ignore')}")
 
         except FileNotFoundError:
-             print("错误：找不到 'piper' 命令。请确保您已经通过 'pip install piper-tts' 安装了它，并且它在系统的PATH中。")
+             logger.error("找不到 'piper' 命令。请确保您已经通过 'pip install piper-tts' 安装了它，并且它在系统的PATH中。")
              return None
         except Exception as e:
-            print(f"❌ Piper TTS 合成失败: {e}")
+            logger.error(f"Piper TTS 合成失败: {e}")
             return None
         finally:
             # 确保临时文件被删除
@@ -135,17 +136,17 @@ class AIService:
         """
         初始化AI服务，加载Whisper模型、配置DeepSeek客户端和本地TTS引擎。
         """
-        print("正在加载Whisper模型...")
+        logger.info("正在加载Whisper模型...")
         self.whisper_model = whisper.load_model(config.WHISPER_MODEL)
-        print("Whisper模型加载完毕。")
+        logger.info("Whisper模型加载完毕。")
 
-        print("正在配置DeepSeek客户端...")
+        logger.info("正在配置DeepSeek客户端...")
         self.deepseek_client = OpenAI(api_key=config.DEEPSEEK_API_KEY, base_url=config.DEEPSEEK_BASE_URL)
-        print("DeepSeek客户端配置完毕。")
+        logger.info("DeepSeek客户端配置完毕。")
 
-        print("正在初始化本地TTS引擎...")
+        logger.info("正在初始化本地TTS引擎...")
         self.local_tts_engine = LocalTTSEngine()
-        print("本地TTS引擎初始化完毕。")
+        logger.info("本地TTS引擎初始化完毕。")
 
     async def text_to_wav(self, text: str, length_scale: float = 1.0, noise_scale: float = 0.667, noise_w: float = 0.8) -> str | None:
         """
@@ -160,7 +161,7 @@ class AIService:
         """
         temp_file_path = None
         try:
-            print(f"正在从URL下载媒体文件: {url}")
+            logger.info(f"正在从URL下载媒体文件: {url}")
             response = requests.get(url, stream=True, headers=config.HEADERS, timeout=30)
             response.raise_for_status()
 
@@ -171,39 +172,39 @@ class AIService:
                 for chunk in response.iter_content(chunk_size=8192):
                     temp_file.write(chunk)
             
-            print(f"媒体文件已临时保存至: {temp_file_path}")
+            logger.info(f"媒体文件已临时保存至: {temp_file_path}")
             return self.transcribe_media_file(temp_file_path)
 
         except requests.RequestException as e:
-            print(f"下载媒体文件时发生错误: {e}")
+            logger.error(f"下载媒体文件时发生错误: {e}")
             return ""
         except Exception as e:
-            print(f"处理媒体文件URL时发生未知错误: {e}")
+            logger.error(f"处理媒体文件URL时发生未知错误: {e}")
             return ""
         finally:
             if temp_file_path and os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
-                print(f"已清理临时文件: {temp_file_path}")
+                logger.info(f"已清理临时文件: {temp_file_path}")
 
     def transcribe_media_file(self, file_path: str) -> str:
         """
         使用Whisper模型将指定的媒体文件（音频或视频）转换为文字。
         """
-        print(f"正在进行语音识别: {file_path}")
+        logger.info(f"正在进行语音识别: {file_path}")
         try:
             result = self.whisper_model.transcribe(file_path)
             text = result.get("text", "")
-            print("语音识别完成。")
+            logger.info("语音识别完成。")
             return text
         except Exception as e:
-            print(f"语音识别过程中发生错误: {e}")
+            logger.error(f"语音识别过程中发生错误: {e}")
             return ""
 
     def get_chat_completion(self, prompt: str) -> dict | None:
         """
         调用DeepSeek聊天模型获取答案，并解析返回的JSON。
         """
-        print("正在请求DeepSeek AI获取答案 (JSON模式)...")
+        logger.info("正在请求DeepSeek AI获取答案 (JSON模式)...")
         try:
             messages = [
                 ChatCompletionSystemMessageParam(role="system", content=prompts.SYSTEM_PROMPT),
@@ -218,19 +219,19 @@ class AIService:
             )
             
             answer_content = ai_response.choices[0].message.content
-            print("已收到DeepSeek的回复。")
+            logger.info("已收到DeepSeek的回复。")
 
             try:
                 json_data = json.loads(answer_content)
-                print("成功解析AI的答案。")
+                logger.info("成功解析AI的答案。")
                 return json_data
             except json.JSONDecodeError as e:
-                print(f"错误：解析AI返回的JSON时失败: {e}")
-                print(f"尝试解析的字符串: {answer_content}")
+                logger.error(f"解析AI返回的JSON时失败: {e}")
+                logger.error(f"尝试解析的字符串: {answer_content}")
                 return None
 
         except Exception as e:
-            print(f"调用DeepSeek API时发生错误: {e}")
+            logger.error(f"调用DeepSeek API时发生错误: {e}")
             return None
 			
 
