@@ -10,6 +10,11 @@ import src.config as config  # 导入我们的配置
 from src.utils import logger
 
 
+class RateLimitException(Exception):
+    """自定义异常，在检测到服务器速率限制时抛出。"""
+    pass
+
+
 class DriverService:
     """服务类，用于封装所有Playwright浏览器操作。"""
 
@@ -27,7 +32,7 @@ class DriverService:
         self.browser = await self.playwright.chromium.launch(headless=headless)
         # 在创建上下文时直接授予麦克风权限
         context = await self.browser.new_context(permissions=['microphone'])
-        await context.tracing.start(screenshots=True, snapshots=True, sources=True)
+        # await context.tracing.start(screenshots=True, snapshots=True, sources=True)
         self.page = await context.new_page()
         # self.page = await self.browser.new_page()
         self.page.set_default_timeout(30000) # 设置30秒默认超时
@@ -36,10 +41,10 @@ class DriverService:
     async def stop(self):
         """优雅地关闭浏览器和Playwright实例。"""
         logger.info("正在关闭浏览器...")
-        if self.page and self.page.context:
-            logger.info("正在保存Playwright追踪文件...")
-            await self.page.context.tracing.stop(path="trace.zip")  # 保存追踪文件到项目根目录
-            logger.info("Playwright追踪文件已保存为 trace.zip。")
+        # if self.page and self.page.context:
+        #     logger.info("正在保存Playwright追踪文件...")
+        #     await self.page.context.tracing.stop(path="trace.zip")  # 保存追踪文件到项目根目录
+        #     logger.info("Playwright追踪文件已保存为 trace.zip。")
         if self.browser:
             await self.browser.close()
         if self.playwright:
@@ -522,3 +527,21 @@ class DriverService:
             markdown_table += f"| {' | '.join(row_data)} |\n"
             
         return markdown_table, blank_counter
+
+    async def handle_rate_limit_modal(self):
+        """
+        检查并处理“操作过于频繁”的弹窗。如果检测到，则抛出RateLimitException。
+        """
+        try:
+            modal_content_locator = self.page.locator('div.ant-modal-confirm-content:has-text("您的操作过于频繁")')
+            # 使用短暂超时，因为此弹窗不是每次都出现
+            if await modal_content_locator.is_visible(timeout=2000):
+                logger.error("检测到“操作过于频繁”弹窗。服务器已暂时拒绝请求。")
+                await self.page.locator("button:has-text('我知道了')").click()
+                raise RateLimitException("服务器速率限制")
+        except PlaywrightError:
+            # 超时意味着弹窗没有出现，这是正常情况，直接忽略即可
+            pass
+        except Exception as e:
+            # 捕获其他意想不到的错误
+            logger.error(f"处理速率限制弹窗时发生未知错误: {e}")

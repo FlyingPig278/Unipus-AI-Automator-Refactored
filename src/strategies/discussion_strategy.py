@@ -91,6 +91,7 @@ class DiscussionStrategy(BaseStrategy):
                 logger.debug("发布按钮已变为可点击状态。")
 
                 await publish_button.click()
+                await self.driver_service.handle_rate_limit_modal()
                 logger.success("评论已发布。")
                 
                 await asyncio.sleep(2)

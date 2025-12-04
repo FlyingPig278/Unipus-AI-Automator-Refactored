@@ -106,6 +106,7 @@ class ReadAloudStrategy(BaseVoiceStrategy):
 
             if should_submit:
                 await self.driver_service.page.click(".btn")
+                await self.driver_service.handle_rate_limit_modal()
                 logger.info("答案已提交。正在处理最终确认弹窗...")
                 await self.driver_service.handle_submission_confirmation()
             else:

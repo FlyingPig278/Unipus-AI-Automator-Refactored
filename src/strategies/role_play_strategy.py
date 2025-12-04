@@ -49,6 +49,7 @@ class RolePlayStrategy(BaseVoiceStrategy):
                 if not is_chained_task:
                     submit_button_locator = self.driver_service.page.locator(".btn:has-text('提交'), .btn:has-text('提 交')").first
                     await submit_button_locator.click()
+                    await self.driver_service.handle_rate_limit_modal()
                     logger.info("已点击提交按钮。")
                     await self.driver_service.handle_submission_confirmation()
                 return True

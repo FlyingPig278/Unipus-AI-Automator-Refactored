@@ -1,6 +1,6 @@
 import asyncio
 import src.config as config
-from src.services.driver_service import DriverService
+from src.services.driver_service import DriverService, RateLimitException
 from src.services.ai_service import AIService
 from src.services.cache_service import CacheService
 from src.utils import logger, console
@@ -237,6 +237,9 @@ async def main():
 
        logger.always_print("程序已结束。")
 
+   except RateLimitException:
+       logger.error("\n程序因操作过于频繁被服务器限制，已自动终止。")
+       logger.warning("请等待几分钟后，再重新运行本程序。")
    except Exception as e:
        logger.error(f"\n程序运行期间发生致命错误: {e}")
    finally:
