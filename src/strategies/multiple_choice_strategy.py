@@ -60,21 +60,27 @@ class MultipleChoiceStrategy(BaseStrategy):
         logger.info("开始执行多选题策略...")
 
         try:
-            breadcrumb_parts = await self.driver_service.get_breadcrumb_parts()
+            base_breadcrumb_parts = await self.driver_service.get_breadcrumb_parts()
             question_locator = self.driver_service.page.locator("div.question-common-abs-choice.multipleChoice").first
-            if not breadcrumb_parts or not await question_locator.is_visible():
+            if not base_breadcrumb_parts or not await question_locator.is_visible():
                 logger.error("无法获取页面关键信息（面包屑或题目），终止策略。")
                 return False, False
         except Exception as e:
             logger.error(f"提取面包屑或题目容器时出错: {e}")
             return False, False
 
+        # 根据是否是链式任务，构建最终用于缓存的breadcrumb
+        current_breadcrumb_parts = base_breadcrumb_parts
+        if is_chained_task and sub_task_index != -1:
+            current_breadcrumb_parts = base_breadcrumb_parts + [str(sub_task_index)]
+            logger.info(f"题中题缓存路径：{' -> '.join(current_breadcrumb_parts)}")
+
         cache_write_needed = False
         answers_to_fill = [] 
         use_cache = False
 
-        if not is_chained_task:
-            task_page_cache = self.cache_service.get_task_page_cache(breadcrumb_parts)
+        if not is_chained_task or sub_task_index != -1: # 只有非链式任务 或 链式任务的子任务才尝试从缓存读取
+            task_page_cache = self.cache_service.get_task_page_cache(current_breadcrumb_parts)
             if not config.FORCE_AI and task_page_cache and task_page_cache.get('type') == self.strategy_type and task_page_cache.get('answers'):
                 logger.info("在缓存中找到此页面的答案。")
                 answers_to_fill = task_page_cache['answers']
@@ -83,12 +89,12 @@ class MultipleChoiceStrategy(BaseStrategy):
                 logger.info("FORCE_AI为True，强制忽略缓存，调用AI。")
         
         if not use_cache:
-            if is_chained_task:
-                logger.info("处于“题中题”模式，跳过缓存，直接调用AI。")
+            if is_chained_task and sub_task_index == -1: # 链式任务但未提供sub_task_index，不应该走到这里
+                 logger.warning("链式任务未提供 sub_task_index，跳过缓存调用AI。")
             else:
                 logger.info("缓存未命中，将调用AI进行解答...")
             
-            cache_write_needed = not is_chained_task
+            cache_write_needed = not use_cache
 
             logger.info("正在并发提取文章、说明、题目等信息...")
             tasks = [
@@ -133,7 +139,7 @@ class MultipleChoiceStrategy(BaseStrategy):
             logger.debug(f"AI回答: {json_data}")
             answers_to_fill = [str(char).upper() for char in json_data["questions"][0].get("answer", [])]
 
-        return await self._fill_and_submit(answers_to_fill, cache_write_needed, breadcrumb_parts, is_chained_task=is_chained_task)
+        return await self._fill_and_submit(answers_to_fill, cache_write_needed, current_breadcrumb_parts, is_chained_task=is_chained_task)
 
     async def _get_article_text(self) -> str:
         media_url, media_type = await self.driver_service.get_media_source_and_type()
