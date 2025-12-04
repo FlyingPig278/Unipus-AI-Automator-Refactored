@@ -2,7 +2,6 @@ import wave
 from io import BytesIO
 from typing import List, Dict, Any
 
-from src import config
 from src.services.ai_service import AIService
 from src.services.cache_service import CacheService
 from src.services.driver_service import DriverService
@@ -156,7 +155,7 @@ class RolePlayStrategy(BaseVoiceStrategy):
             finally:
                 await self._clear_persistent_audio_payload()
 
-        final_button_locator = self.driver_service.page.locator(".btn:has-text('提交'), .btn:has-text('下一题')").first
+        final_button_locator = self.driver_service.page.locator(".btn:has-text('提 交'), .btn:has-text('下一题')").first
         await final_button_locator.wait_for(timeout=10000)
         logger.info("检测到最终按钮（提交/下一题），本轮流程结束。")
 

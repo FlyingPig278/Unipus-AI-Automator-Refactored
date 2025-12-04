@@ -61,6 +61,7 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
         elif "下一题" in btn_text:
             logger.info("检测到“下一题”按钮，启动“题中题”循环模式。")
             shared_context = ""
+            config.HAS_FETCHED_REMOTE_ARTICLE = False # 重置状态锁
             
             while True:
                 current_strategy = None

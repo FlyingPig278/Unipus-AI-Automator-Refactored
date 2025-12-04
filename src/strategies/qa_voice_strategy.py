@@ -1,7 +1,8 @@
 import asyncio
-from typing import List, Dict, Any
-from playwright.async_api import Locator
+
 from playwright.async_api import Error as PlaywrightError
+from playwright.async_api import Locator
+
 from src import prompts, config
 from src.services.ai_service import AIService
 from src.services.cache_service import CacheService
@@ -54,12 +55,14 @@ class QAVoiceStrategy(BaseVoiceStrategy):
 
         page_level_article_text = ""
         
-        if "about the passage you have just read" in direction_text:
+        # 检查是否需要返回获取文章，并且“状态锁”是开着的
+        if "about the passage you have just read" in direction_text and not config.HAS_FETCHED_REMOTE_ARTICLE:
             logger.info("检测到需要返回前文获取文章的特殊语音题型。")
             try:
                 header_tasks_container = self.driver_service.page.locator(".pc-header-tasks-container")
                 current_active_tab_locator = header_tasks_container.locator(".pc-header-task-activity")
                 original_tab_title = await current_active_tab_locator.get_attribute("title")
+
                 first_tab_locator = header_tasks_container.locator(".pc-task").first
                 
                 if not original_tab_title or not await first_tab_locator.is_visible():
@@ -81,6 +84,10 @@ class QAVoiceStrategy(BaseVoiceStrategy):
                 await original_tab_locator.click()
                 await self.driver_service.page.locator(".p-oral-personal-state .oral-personal-state-wrapper").wait_for(timeout=15000)
                 logger.success("已成功返回问题页面。")
+                
+                # 成功获取并返回后，将“状态锁”锁上
+                config.HAS_FETCHED_REMOTE_ARTICLE = True
+                logger.info("远程文章获取状态锁已激活，本次“题中题”不再重复跳转。")
 
             except Exception as e:
                 logger.error(f"在返回获取文章的过程中发生严重错误，将中止任务: {e}")

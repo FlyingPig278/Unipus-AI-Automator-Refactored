@@ -181,10 +181,7 @@ class BaseVoiceStrategy(BaseStrategy, ABC):
         script_template = """
         (() => {
             console.log('[AI-DEBUG] [一次性] 执行一次性劫持脚本...');
-            if (window.originalWebSocketOneShot) { // 使用不同的变量名防止冲突
-                window.WebSocket = window.originalWebSocketOneShot;
-                console.log('[AI-DEBUG] [一次性] 已恢复原始WebSocket (一次性)。');
-            }
+            // 注意：此处不再执行任何清理操作，清理操作完全由 _cleanup_one_shot_injection 负责
             window.injectedAudioB64OneShot = 'AUDIO_B64_PLACEHOLDER';
             window.ttsAudioSentOneShot = false;
             window.originalWebSocketOneShot = window.WebSocket;
