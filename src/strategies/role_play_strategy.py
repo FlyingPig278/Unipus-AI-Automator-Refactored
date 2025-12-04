@@ -1,3 +1,4 @@
+import asyncio
 import wave
 from io import BytesIO
 from typing import List, Dict, Any
@@ -29,6 +30,7 @@ class RolePlayStrategy(BaseVoiceStrategy):
 
     async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> bool:
         logger.info("开始执行 Role-Play 策略...")
+        await self._install_persistent_hijack()
 
         max_retries = 2
         score_threshold = 85.0
@@ -59,14 +61,14 @@ class RolePlayStrategy(BaseVoiceStrategy):
                     logger.info("已点击“开始”按钮以重试。")
                 else:
                     logger.error("已达到最大重试次数，任务失败。")
-                    if not is_chained_task:
-                        try:
-                            submit_button_locator = self.driver_service.page.locator(".btn:has-text('提交'), .btn:has-text('提 交')").first
-                            await submit_button_locator.click()
-                            logger.info("已点击提交按钮（最后尝试）。")
-                            await self.driver_service.handle_submission_confirmation()
-                        except Exception as e:
-                            logger.error(f"最后尝试提交时出错: {e}")
+                    # if not is_chained_task:
+                    #     try:
+                    #         submit_button_locator = self.driver_service.page.locator(".btn:has-text('提交'), .btn:has-text('提 交')").first
+                    #         await submit_button_locator.click()
+                    #         logger.info("已点击提交按钮（最后尝试）。")
+                    #         await self.driver_service.handle_submission_confirmation()
+                    #     except Exception as e:
+                    #         logger.error(f"最后尝试提交时出错: {e}")
                     return False
         return False
 
@@ -155,8 +157,10 @@ class RolePlayStrategy(BaseVoiceStrategy):
             finally:
                 await self._clear_persistent_audio_payload()
 
-        final_button_locator = self.driver_service.page.locator(".btn:has-text('提 交'), .btn:has-text('下一题')").first
-        await final_button_locator.wait_for(timeout=10000)
+        logger.info("我方回合已全部完成，正在等待对话结束和最终按钮的出现...")
+        # 直接等待最终按钮出现，并将超时增加到30秒，以覆盖AI最后一句的播放时间。
+        final_button_locator = self.driver_service.page.locator(".btn:has-text('提交'), .btn:has-text('提 交'), .btn:has-text('下一题')").first
+        await final_button_locator.wait_for(timeout=30000)
         logger.info("检测到最终按钮（提交/下一题），本轮流程结束。")
 
         if not turn_scores:

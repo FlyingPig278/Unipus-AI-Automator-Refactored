@@ -115,7 +115,13 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
                     break
             
             if current_strategy:
-                await current_strategy.execute(is_chained_task=True) 
+                # 特殊处理：RolePlayStrategy 是一种独立的、自包含的任务，
+                # 即使页面初始时没有“提交”按钮，它也应该被视为一个独立的任务，而不是链式任务的一部分。
+                if isinstance(current_strategy, RolePlayStrategy):
+                    logger.info("检测到 RolePlayStrategy，强制以非链式任务模式(is_chained_task=False)执行。")
+                    await current_strategy.execute(is_chained_task=False)
+                else:
+                    await current_strategy.execute(is_chained_task=True)
             else:
                 logger.info("未找到任何适用策略，此页面可能为纯信息页。继续下一个任务。")
 
