@@ -32,7 +32,7 @@ class FillInTheBlankStrategy(BaseStrategy):
             return False
         return False
 
-    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> bool:
+    async def execute(self, shared_context: str = "", is_chained_task: bool = False, sub_task_index: int = -1) -> tuple[bool, bool]:
         logger.info("=" * 20)
         logger.info("开始执行填空题策略...")
 
@@ -40,10 +40,10 @@ class FillInTheBlankStrategy(BaseStrategy):
             breadcrumb_parts = await self.driver_service.get_breadcrumb_parts()
             if not breadcrumb_parts:
                 logger.error("无法获取页面面包屑，终止策略。")
-                return False
+                return False, False
         except Exception as e:
             logger.error(f"提取面包屑时出错: {e}")
-            return False
+            return False, False
 
         cache_write_needed = False
         answers_to_fill = []
@@ -104,12 +104,12 @@ class FillInTheBlankStrategy(BaseStrategy):
                 confirm = await asyncio.to_thread(input, "是否确认发送此 Prompt？[Y/n]: ")
                 if confirm.strip().upper() not in ["Y", ""]:
                     logger.warning("用户取消了 AI 调用，终止当前任务。")
-                    return False
+                    return False, False
 
             json_data = self.ai_service.get_chat_completion(prompt)
             if not json_data or "questions" not in json_data or not json_data["questions"]:
                 logger.error("未能从AI获取有效答案。")
-                return False
+                return False, False
 
             logger.debug(f"AI回答: {json_data}")
             answers_to_fill = json_data["questions"][0].get("answer", [])
@@ -140,14 +140,14 @@ class FillInTheBlankStrategy(BaseStrategy):
         return ""
 
     async def _fill_and_submit(self, answers: list[str], cache_write_needed: bool, breadcrumb_parts: list[str],
-                               is_chained_task: bool = False) -> bool:
+                               is_chained_task: bool = False) -> tuple[bool, bool]:
         try:
             logger.debug("正在解析并预验证答案...")
             input_locators = await self.driver_service.page.locator(".fe-scoop .comp-abs-input input").all()
 
             if len(answers) != len(input_locators):
                 logger.error(f"AI返回的答案数量 ({len(answers)}) 与页面输入框数量 ({len(input_locators)}) 不匹配，终止作答。")
-                return False
+                return False, False
 
             logger.info("预验证通过，开始填写答案...")
             for i, input_locator in enumerate(input_locators):
@@ -173,16 +173,16 @@ class FillInTheBlankStrategy(BaseStrategy):
                     if cache_write_needed:
                         logger.info("准备从解析页面提取正确答案并写入缓存...")
                         await self._write_answers_to_cache(breadcrumb_parts)
-                    return True
+                    return True, cache_write_needed
                 else:
                     logger.warning("用户取消提交。")
-                    return False
+                    return False, False
             else:
-                return True
+                return True, cache_write_needed
 
         except Exception as e:
             logger.error(f"填写或提交答案时出错: {e}")
-            return False
+            return False, False
 
     async def _write_answers_to_cache(self, breadcrumb_parts: list[str]):
         try:

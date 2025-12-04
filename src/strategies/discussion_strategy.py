@@ -29,7 +29,7 @@ class DiscussionStrategy(BaseStrategy):
             return False
         return False
 
-    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> bool:
+    async def execute(self, shared_context: str = "", is_chained_task: bool = False, sub_task_index: int = -1) -> tuple[bool, bool]:
         logger.info("=" * 20)
         logger.info("开始执行讨论题策略...")
 
@@ -61,19 +61,19 @@ class DiscussionStrategy(BaseStrategy):
                 confirm = await asyncio.to_thread(input, "是否确认发送此 Prompt？[Y/n]: ")
                 if confirm.strip().upper() not in ["Y", ""]:
                     logger.warning("用户取消了 AI 调用，终止当前任务。")
-                    return False
+                    return False, False
 
             logger.info("正在请求AI生成评论...")
             ai_response = self.ai_service.get_chat_completion(prompt)
             
             if not ai_response or "answers" not in ai_response or not isinstance(ai_response["answers"], list):
                 logger.error("未能从AI获取有效的答案列表，终止执行。")
-                return False
+                return False, False
             
             ai_answers = ai_response["answers"]
             if len(ai_answers) != len(sub_questions):
                 logger.warning(f"AI返回了 {len(ai_answers)} 个答案，但我们提取了 {len(sub_questions)} 个问题，终止执行。")
-                return False
+                return False, False
             
             final_comment = ""
             for i, answer in enumerate(ai_answers):
@@ -96,11 +96,11 @@ class DiscussionStrategy(BaseStrategy):
                 
                 await asyncio.sleep(2)
             
-            return True
+            return True, False
 
         except Exception as e:
             logger.error(f"执行讨论题策略时发生错误: {e}")
-            return False
+            return False, False
 
     async def close(self):
         pass

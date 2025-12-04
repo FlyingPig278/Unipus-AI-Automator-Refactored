@@ -29,11 +29,20 @@ class ShortAnswerStrategy(BaseStrategy):
             return False
         return False
 
-    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> bool:
+    async def execute(self, shared_context: str = "", is_chained_task: bool = False, sub_task_index: int = -1) -> tuple[bool, bool]:
         logger.info("="*20)
         logger.info("开始执行简答题策略...")
 
         try:
+            # 统一提取所有子问题题干和输入框数量
+            question_containers = await self.driver_service.page.locator(".question-inputbox").all()
+            num_answers_required = len(question_containers)
+            
+            # 如果没有找到输入框，可能不是预期的页面，提前退出
+            if num_answers_required == 0:
+                logger.warning("在页面上未找到任何简答题输入框。")
+                return False, False
+
             logger.info("正在并发提取文章、说明等信息...")
             tasks = [
                 self._get_article_text(),
@@ -46,10 +55,6 @@ class ShortAnswerStrategy(BaseStrategy):
 
             full_context = f"{shared_context}\n{article_text}\n{additional_material}".strip()
             is_table_question = "|:---:" in additional_material
-
-            # 统一提取所有子问题题干和输入框数量
-            question_containers = await self.driver_service.page.locator(".question-inputbox").all()
-            num_answers_required = len(question_containers)
             
             sub_questions = []
             for container in question_containers:
@@ -96,21 +101,23 @@ class ShortAnswerStrategy(BaseStrategy):
                 confirm = await asyncio.to_thread(input, "是否确认发送此 Prompt？[Y/n]: ")
                 if confirm.strip().upper() not in ["Y", ""]:
                     logger.warning("用户取消了 AI 调用，终止当前任务。")
-                    return False
+                    return False, False
             
             json_data = self.ai_service.get_chat_completion(prompt)
             if not json_data or "answers" not in json_data or not isinstance(json_data["answers"], list):
                 logger.error("未能从AI获取有效的答案列表。")
-                return False
+                return False, False
 
             answers_to_fill = json_data["answers"]
             logger.info(f"AI已生成 {len(answers_to_fill)} 个回答。")
 
-            return await self._fill_and_submit(answers_to_fill, is_chained_task=is_chained_task)
+            # 因为此策略不支持缓存，所以第二个返回值总是False
+            succeeded, _ = await self._fill_and_submit(answers_to_fill, is_chained_task=is_chained_task)
+            return succeeded, False
 
         except Exception as e:
             logger.error(f"执行简答题策略时发生错误: {e}")
-            return False
+            return False, False
 
     async def _get_article_text(self) -> str:
         try:
@@ -128,13 +135,13 @@ class ShortAnswerStrategy(BaseStrategy):
         logger.info("未找到文章/媒体材料。")
         return ""
 
-    async def _fill_and_submit(self, answers: list[str], is_chained_task: bool = False) -> bool:
+    async def _fill_and_submit(self, answers: list[str], is_chained_task: bool = False) -> tuple[bool, bool]:
         try:
             textarea_locators = await self.driver_service.page.locator("textarea.question-inputbox-input").all()
 
             if len(answers) != len(textarea_locators):
                 logger.error(f"AI返回的答案数量 ({len(answers)}) 与页面输入框数量 ({len(textarea_locators)}) 不匹配，终止作答。")
-                return False
+                return False, False
 
             logger.info("开始填写答案...")
             for i, textarea_locator in enumerate(textarea_locators):
@@ -157,15 +164,15 @@ class ShortAnswerStrategy(BaseStrategy):
                     await self.driver_service.handle_rate_limit_modal()
                     logger.info("答案已提交。正在处理最终确认弹窗...")
                     await self.driver_service.handle_submission_confirmation()
-                    return True
+                    return True, False
                 else:
                     logger.warning("用户取消提交。")
-                    return False
+                    return False, False
             else:
-                return True
+                return True, False
         except Exception as e:
             logger.error(f"填写或提交答案时出错: {e}")
-            return False
+            return False, False
 
     async def close(self) -> None:
         pass

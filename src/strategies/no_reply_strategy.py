@@ -57,7 +57,7 @@ class NoReplyStrategy(BaseStrategy):
             return False
         return False # Fallback
 
-    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> bool:
+    async def execute(self, shared_context: str = "", is_chained_task: bool = False, sub_task_index: int = -1) -> tuple[bool, bool]:
         logger.info("="*20)
         logger.info("开始执行“无作答页面”策略...")
 
@@ -77,7 +77,7 @@ class NoReplyStrategy(BaseStrategy):
 
                 window[chunkName].push([
                     ['__hack_page_manager_' + Math.random()], 
-                    {}, 
+                    {},
                     (r) => { webpackReq = r; }
                 ]);
 
@@ -162,19 +162,18 @@ class NoReplyStrategy(BaseStrategy):
             }
         })();
         """
-        
+
         try:
             result = await self.driver_service.page.evaluate(submission_script)
             if result and result.get('success'):
                 logger.success(f"成功执行了JS提交脚本: {result.get('message')}")
-                return True
+                return True, False
             else:
                 error_message = result.get('message') if result else '未知JS执行错误'
                 logger.error(f"执行JS提交脚本失败: {error_message}")
-                return False
+                return False, False
         except Exception as e:
             logger.error(f"调用JS脚本时发生Playwright错误: {e}")
-            return False
-
+            return False, False
     async def close(self) -> None:
         pass

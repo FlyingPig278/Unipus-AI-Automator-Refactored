@@ -55,7 +55,7 @@ class MultipleChoiceStrategy(BaseStrategy):
         options_text = "\n".join(options_text_parts)
         return f"{title.strip()}\n{options_text}"
 
-    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> bool:
+    async def execute(self, shared_context: str = "", is_chained_task: bool = False, sub_task_index: int = -1) -> tuple[bool, bool]:
         logger.info("="*20)
         logger.info("开始执行多选题策略...")
 
@@ -64,10 +64,10 @@ class MultipleChoiceStrategy(BaseStrategy):
             question_locator = self.driver_service.page.locator("div.question-common-abs-choice.multipleChoice").first
             if not breadcrumb_parts or not await question_locator.is_visible():
                 logger.error("无法获取页面关键信息（面包屑或题目），终止策略。")
-                return False
+                return False, False
         except Exception as e:
             logger.error(f"提取面包屑或题目容器时出错: {e}")
-            return False
+            return False, False
 
         cache_write_needed = False
         answers_to_fill = [] 
@@ -123,12 +123,12 @@ class MultipleChoiceStrategy(BaseStrategy):
                 confirm = await asyncio.to_thread(input, "是否确认发送此 Prompt？[Y/n]: ")
                 if confirm.strip().upper() not in ["Y", ""]:
                     logger.warning("用户取消了 AI 调用，终止当前任务。")
-                    return False
+                    return False, False
             
             json_data = self.ai_service.get_chat_completion(prompt)
             if not json_data or "questions" not in json_data or not json_data["questions"]:
                 logger.error("未能从AI获取有效答案，终止执行。")
-                return False
+                return False, False
 
             logger.debug(f"AI回答: {json_data}")
             answers_to_fill = [str(char).upper() for char in json_data["questions"][0].get("answer", [])]
@@ -150,7 +150,7 @@ class MultipleChoiceStrategy(BaseStrategy):
         logger.info("未在本页找到可用的音频或视频文件。")
         return ""
 
-    async def _fill_and_submit(self, answers: list[str], cache_write_needed: bool, breadcrumb_parts: list[str], is_chained_task: bool = False) -> bool:
+    async def _fill_and_submit(self, answers: list[str], cache_write_needed: bool, breadcrumb_parts: list[str], is_chained_task: bool = False) -> tuple[bool, bool]:
         try:
             logger.debug("正在解析并预验证答案...")
             option_wrap_locator = self.driver_service.page.locator("div.question-common-abs-choice.multipleChoice .option-wrap").first
@@ -166,7 +166,7 @@ class MultipleChoiceStrategy(BaseStrategy):
                     break
             
             if not is_valid:
-                return False
+                return False, False
 
             logger.info("预验证通过，开始填写答案...")
             for answer_char in answers:
@@ -182,7 +182,6 @@ class MultipleChoiceStrategy(BaseStrategy):
                 if not (config.IS_AUTO_MODE and config.AUTO_MODE_NO_CONFIRM):
                     confirm = await asyncio.to_thread(input, "AI或缓存已更新答案顺序。是否确认提交？[Y/n]: ")
                     if confirm.strip().upper() not in ["Y", ""]:
-                        logger.warning("用户取消提交。")
                         should_submit = False
 
                 if should_submit:
@@ -194,15 +193,15 @@ class MultipleChoiceStrategy(BaseStrategy):
                     if cache_write_needed:
                         logger.info("准备从解析页面提取正确答案并写入缓存...")
                         await self._write_answers_to_cache(breadcrumb_parts)
-                    return True
+                    return True, cache_write_needed
                 else:
-                    return False
+                    return False, False
             else:
-                return True
+                return True, cache_write_needed
 
         except Exception as e:
             logger.error(f"填写或提交答案时出错: {e}")
-            return False
+            return False, False
 
     async def _write_answers_to_cache(self, breadcrumb_parts: list[str]):
         try:

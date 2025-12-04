@@ -33,7 +33,7 @@ class BaseVoiceStrategy(BaseStrategy, ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def execute(self, shared_context: str = "", is_chained_task: bool = False) -> bool:
+    def execute(self, shared_context: str = "", is_chained_task: bool = False, sub_task_index: int = -1) -> tuple[bool, bool]:
         """执行策略的入口。"""
         raise NotImplementedError
 

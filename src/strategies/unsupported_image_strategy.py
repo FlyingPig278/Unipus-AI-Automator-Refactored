@@ -31,9 +31,9 @@ class UnsupportedImageStrategy(BaseStrategy):
             return False
         return False
 
-    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> bool:
+    async def execute(self, shared_context: str = "", is_chained_task: bool = False, sub_task_index: int = -1) -> tuple[bool, bool]:
         logger.always_print("=" * 20)
         logger.always_print("执行“跳过图片题”策略...")
         logger.always_print("AI无法处理基于图片的题目，将中止当前任务以跳过。")
         logger.always_print("=" * 20)
-        return False
+        return False, False

@@ -64,7 +64,9 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
             logger.info("检测到“下一题”按钮，启动“题中题”循环模式。")
             shared_context = ""
             config.HAS_FETCHED_REMOTE_ARTICLE = False # 重置状态锁
-            
+            sub_task_index = 0 # 初始化子任务索引
+            cache_was_written_in_chain = False # 标志位，记录在本次链式任务中是否有缓存被写入
+
             while True:
                 current_strategy = None
                 for StrategyClass in AVAILABLE_STRATEGIES:
@@ -75,7 +77,14 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
                 
                 if current_strategy:
                     try:
-                        succeeded = await current_strategy.execute(shared_context=shared_context, is_chained_task=True)
+                        # 调用策略时传入 sub_task_index，并接收 (succeeded, cache_written) 元组
+                        succeeded, cache_written = await current_strategy.execute(
+                            shared_context=shared_context,
+                            is_chained_task=True,
+                            sub_task_index=sub_task_index
+                        )
+                        if cache_written:
+                            cache_was_written_in_chain = True # 如果本次执行写入了缓存，更新标志
                         if not succeeded:
                             logger.warning(f"策略 {current_strategy.__class__.__name__} 执行提前终止，任务链中断。")
                             break 
@@ -88,6 +97,8 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
                     if material:
                         logger.info("已提取到共享材料。")
                         shared_context += f"\n{material}"
+
+                sub_task_index += 1 # 递增子任务索引
 
                 action_btn_loop = browser_service.page.locator(".btn:has-text('下一题'), .btn:has-text('下一页'), .btn:has-text('提 交'), .btn:has-text('提交')").first
                 await action_btn_loop.wait_for(state="visible", timeout=10000)
@@ -103,6 +114,7 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
                     await action_btn_loop.click()
                     await browser_service.handle_submission_confirmation()
                     logger.success("“题中题”任务完成。")
+                    # TODO: 在这里根据 cache_was_written_in_chain 调用统一的答案提取和缓存写入流程
                     break
                 else:
                     logger.warning(f"检测到未知按钮文本 '{current_btn_text}'，循环终止。")

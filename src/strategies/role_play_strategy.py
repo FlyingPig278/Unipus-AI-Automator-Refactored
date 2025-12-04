@@ -27,7 +27,7 @@ class RolePlayStrategy(BaseVoiceStrategy):
         except Exception:
             return False
 
-    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> bool:
+    async def execute(self, shared_context: str = "", is_chained_task: bool = False, sub_task_index: int = -1) -> tuple[bool, bool]:
         logger.info("开始执行 Role-Play 策略...")
         await self._install_persistent_hijack()
 
@@ -40,7 +40,7 @@ class RolePlayStrategy(BaseVoiceStrategy):
 
             if not self.my_turns:
                 logger.error("未能识别出任何需要朗读的句子。")
-                return False
+                return False, False
 
             average_score = await self._execute_and_evaluate_turns()
 
@@ -52,7 +52,7 @@ class RolePlayStrategy(BaseVoiceStrategy):
                     await self.driver_service.handle_rate_limit_modal()
                     logger.info("已点击提交按钮。")
                     await self.driver_service.handle_submission_confirmation()
-                return True
+                return True, False
             else:
                 current_retry += 1
                 if current_retry <= max_retries:
@@ -69,8 +69,8 @@ class RolePlayStrategy(BaseVoiceStrategy):
                     #         await self.driver_service.handle_submission_confirmation()
                     #     except Exception as e:
                     #         logger.error(f"最后尝试提交时出错: {e}")
-                    return False
-        return False
+                    return False, False
+        return False, False
 
     async def _prepare_turns(self):
         logger.info("进入准备阶段...")

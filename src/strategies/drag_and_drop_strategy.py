@@ -31,7 +31,7 @@ class DragAndDropStrategy(BaseStrategy):
             return False
         return False
 
-    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> bool:
+    async def execute(self, shared_context: str = "", is_chained_task: bool = False, sub_task_index: int = -1) -> tuple[bool, bool]:
         logger.info("=" * 20)
         logger.info("开始执行拖拽题策略 (JS函数调用模式)...")
 
@@ -93,13 +93,13 @@ class DragAndDropStrategy(BaseStrategy):
                     confirm = await asyncio.to_thread(input, "是否确认发送此 Prompt？[Y/n]: ")
                     if confirm.strip().upper() not in ["Y", ""]:
                         logger.warning("用户取消了 AI 调用，终止当前任务。")
-                        return False
+                        return False, False
 
                 logger.info("正在请求AI获取正确顺序...")
                 ai_response = self.ai_service.get_chat_completion(prompt)
                 if not ai_response or "ordered_options" not in ai_response:
                     logger.error("未能从AI获取有效的排序结果。")
-                    return False
+                    return False, False
                 
                 target_order = ai_response["ordered_options"]
                 logger.info(f"AI返回的正确顺序: {', '.join(target_order)}")
@@ -125,16 +125,16 @@ class DragAndDropStrategy(BaseStrategy):
                     if cache_write_needed:
                         logger.info("准备从解析页面提取正确答案并写入缓存...")
                         await self._write_answers_to_cache(breadcrumb_parts)
-                    return True
+                    return True, cache_write_needed
                 else:
                     logger.warning("用户取消提交。")
-                    return False
+                    return False, False
             else:
-                return True
+                return True, cache_write_needed
 
         except Exception as e:
             logger.error(f"执行拖拽题策略时发生错误: {e}")
-            return False
+            return False, False
 
     async def _get_media_transcript(self) -> str:
         media_url, media_type = await self.driver_service.get_media_source_and_type()

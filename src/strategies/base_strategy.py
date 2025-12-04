@@ -26,11 +26,12 @@ class BaseStrategy(ABC):
         pass
 
     @abstractmethod
-    def execute(self, shared_context: str = "", is_chained_task: bool = False) -> bool:
+    def execute(self, shared_context: str = "", is_chained_task: bool = False, sub_task_index: int = -1) -> tuple[bool, bool]:
         """
         执行本策略的核心逻辑。
-        返回 True 表示成功完成（不包括提交，如果is_chained_task为True），
-        返回 False 表示因故提前终止（如用户取消，内部错误等）。
+        返回一个元组 (succeeded, cache_written)。
+        succeeded: True 表示成功完成，False 表示因故提前终止。
+        cache_written: True 表示本次执行调用了AI并新写入了缓存。
         """
         pass
 

@@ -49,7 +49,7 @@ class QAVoiceStrategy(BaseVoiceStrategy):
             return False
         return False
 
-    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> bool:
+    async def execute(self, shared_context: str = "", is_chained_task: bool = False, sub_task_index: int = -1) -> tuple[bool, bool]:
         logger.info("=" * 20)
         logger.info("开始执行语音问答策略 (QAVoiceStrategy)...")
 
@@ -91,7 +91,7 @@ class QAVoiceStrategy(BaseVoiceStrategy):
                     logger.info("远程文章获取状态锁已激活，本次“题中题”不再重复跳转。")
                 except Exception as e:
                     logger.error(f"在返回获取文章的过程中发生严重错误，将中止任务: {e}")
-                    return False
+                    return False, False
         else:
             logger.info("检测到『口语陈述题』，将根据主问题和笔记扩展成句子。")
 
@@ -178,7 +178,7 @@ class QAVoiceStrategy(BaseVoiceStrategy):
         logger.info("\n所有语音简答题处理完毕。")
         if should_abort_page:
             logger.warning("由于发生错误或分数不达标，已中止最终提交。")
-            return False
+            return False, False
         if not is_chained_task:
             should_submit = True
             if not (config.IS_AUTO_MODE and config.AUTO_MODE_NO_CONFIRM):
@@ -193,9 +193,9 @@ class QAVoiceStrategy(BaseVoiceStrategy):
                 await self.driver_service.handle_submission_confirmation()
             else:
                 logger.warning("用户取消提交。")
-                return False
+                return False, False
         
-        return True
+        return True, False
 
     async def _get_article_text(self, container: Locator | None = None) -> str:
         search_scope = container if container else self.driver_service.page

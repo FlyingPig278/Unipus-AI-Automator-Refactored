@@ -40,7 +40,7 @@ class ReadAloudStrategy(BaseVoiceStrategy):
             return False
         return False
 
-    async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> bool:
+    async def execute(self, shared_context: str = "", is_chained_task: bool = False, sub_task_index: int = -1) -> tuple[bool, bool]:
         logger.info("=" * 20)
         logger.info("开始执行文字朗读策略...")
 
@@ -91,11 +91,11 @@ class ReadAloudStrategy(BaseVoiceStrategy):
                 should_abort_page = True
                 break
 
-        logger.info("所有语音题处理完毕。")
+        logger.info("\n所有语音题处理完毕。")
 
         if should_abort_page:
             logger.warning("由于发生错误或分数不达标，已中止最终提交。")
-            return False
+            return False, False
 
         if not is_chained_task:
             should_submit = True
@@ -111,6 +111,6 @@ class ReadAloudStrategy(BaseVoiceStrategy):
                 await self.driver_service.handle_submission_confirmation()
             else:
                 logger.warning("用户取消提交。")
-                return False
+                return False, False
         
-        return True
+        return True, False
