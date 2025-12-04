@@ -29,153 +29,149 @@ class QAVoiceStrategy(BaseVoiceStrategy):
     @staticmethod
     async def check(driver_service: DriverService) -> bool:
         try:
-            main_container_selector = ".oral-personal-state-wrapper"
-            is_main_container_visible = await driver_service.page.locator(main_container_selector).first.is_visible(timeout=1000)
+            # 检查是否有录音按钮，这是所有语音题的共同点
             record_button_selector = ".button-record"
-            is_record_button_visible = await driver_service.page.locator(record_button_selector).first.is_visible(timeout=1000)
-            if is_main_container_visible and is_record_button_visible:
+            if not await driver_service.page.locator(record_button_selector).first.is_visible(timeout=1000):
+                return False
+
+            # 检查旧版或新版语音题的容器
+            old_container = ".oral-personal-state-wrapper"
+            new_container = ".oral-state-record-wrapper"
+            
+            # 使用 locator.or_() 来同时检查两种容器
+            combined_locator = driver_service.page.locator(old_container).or_(driver_service.page.locator(new_container))
+            
+            if await combined_locator.first.is_visible(timeout=1000):
                 logger.info("检测到语音简答题结构，应用QAVoiceStrategy。")
                 return True
+                
         except Exception:
             return False
         return False
 
     async def execute(self, shared_context: str = "", is_chained_task: bool = False) -> bool:
         logger.info("=" * 20)
-        logger.info("开始执行语音简答策略...")
+        logger.info("开始执行语音问答策略 (QAVoiceStrategy)...")
 
-        logger.info("正在并发提取页面级信息...")
-        page_level_tasks = [
-            self._get_direction_text(),
-            self.driver_service._extract_additional_material_for_ai()
-        ]
-        results = await asyncio.gather(*page_level_tasks)
-        direction_text, additional_material = results
-        logger.info("页面级信息提取完毕。")
-
-        page_level_article_text = ""
-        
-        # 检查是否需要返回获取文章，并且“状态锁”是开着的
-        if "about the passage you have just read" in direction_text and not config.HAS_FETCHED_REMOTE_ARTICLE:
-            logger.info("检测到需要返回前文获取文章的特殊语音题型。")
-            try:
-                header_tasks_container = self.driver_service.page.locator(".pc-header-tasks-container")
-                current_active_tab_locator = header_tasks_container.locator(".pc-header-task-activity")
-                original_tab_title = await current_active_tab_locator.get_attribute("title")
-
-                first_tab_locator = header_tasks_container.locator(".pc-task").first
-                
-                if not original_tab_title or not await first_tab_locator.is_visible():
-                    raise Exception("无法找到当前激活的标签或第一个任务标签。")
-
-                logger.info(f"正在从 '{original_tab_title}' 导航到第一个任务页获取文章...")
-                await first_tab_locator.click()
-                logger.info("正在检查通用弹窗...")
-                await self.driver_service.handle_common_popups()
-                await self.driver_service.page.locator(".layout-material-container").wait_for(timeout=15000)
-                
-                logger.info("正在提取文章内容...")
-                page_level_article_text = await self.driver_service._extract_additional_material_for_ai()
-                if not page_level_article_text:
-                    logger.warning("已跳转到文章页，但未能提取到文章文本。")
-
-                logger.info(f"文章提取完毕，正在返回 '{original_tab_title}'...")
-                original_tab_locator = header_tasks_container.locator(f'[title="{original_tab_title}"]')
-                await original_tab_locator.click()
-                await self.driver_service.page.locator(".p-oral-personal-state .oral-personal-state-wrapper").wait_for(timeout=15000)
-                logger.success("已成功返回问题页面。")
-                
-                # 成功获取并返回后，将“状态锁”锁上
-                config.HAS_FETCHED_REMOTE_ARTICLE = True
-                logger.info("远程文章获取状态锁已激活，本次“题中题”不再重复跳转。")
-
-            except Exception as e:
-                logger.error(f"在返回获取文章的过程中发生严重错误，将中止任务: {e}")
-                return False
-        
-        question_containers_selector = ".p-oral-personal-state .oral-personal-state-wrapper"
-        all_question_containers = await self.driver_service.page.locator(question_containers_selector).all()
-        logger.info(f"发现 {len(all_question_containers)} 个语音简答题容器。")
-
+        is_oral_recitation_type = await self.driver_service.page.locator(".oral-state-record-wrapper").first.is_visible(timeout=500)
         should_abort_page = False
 
+        direction_text, additional_material, page_level_article_text = "", "", ""
+        if not is_oral_recitation_type:
+            logger.info("检测到『纯语音简答题』，将通过AI生成答案。")
+            logger.info("正在并发提取页面级信息...")
+            page_level_tasks = [ self._get_direction_text(), self.driver_service._extract_additional_material_for_ai() ]
+            results = await asyncio.gather(*page_level_tasks)
+            direction_text, additional_material = results
+            logger.info("页面级信息提取完毕。")
+
+            if "about the passage you have just read" in direction_text and not config.HAS_FETCHED_REMOTE_ARTICLE:
+                logger.info("检测到需要返回前文获取文章的特殊语音题型。")
+                try:
+                    header_tasks_container = self.driver_service.page.locator(".pc-header-tasks-container")
+                    current_active_tab_locator = header_tasks_container.locator(".pc-header-task-activity")
+                    original_tab_title = await current_active_tab_locator.get_attribute("title")
+                    first_tab_locator = header_tasks_container.locator(".pc-task").first
+                    if not original_tab_title or not await first_tab_locator.is_visible():
+                        raise Exception("无法找到当前激活的标签或第一个任务标签。")
+                    logger.info(f"正在从 '{original_tab_title}' 导航到第一个任务页获取文章...")
+                    await first_tab_locator.click()
+                    await self.driver_service.handle_common_popups()
+                    await self.driver_service.page.locator(".layout-material-container").wait_for(timeout=15000)
+                    logger.info("正在提取文章内容...")
+                    page_level_article_text = await self.driver_service._extract_additional_material_for_ai()
+                    if not page_level_article_text:
+                        logger.warning("已跳转到文章页，但未能提取到文章文本。")
+                    logger.info(f"文章提取完毕，正在返回 '{original_tab_title}'...")
+                    original_tab_locator = header_tasks_container.locator(f'[title="{original_tab_title}"]')
+                    await original_tab_locator.click()
+                    await self.driver_service.page.locator(".p-oral-personal-state .oral-personal-state-wrapper").wait_for(timeout=15000)
+                    logger.success("已成功返回问题页面。")
+                    config.HAS_FETCHED_REMOTE_ARTICLE = True
+                    logger.info("远程文章获取状态锁已激活，本次“题中题”不再重复跳转。")
+                except Exception as e:
+                    logger.error(f"在返回获取文章的过程中发生严重错误，将中止任务: {e}")
+                    return False
+        else:
+            logger.info("检测到『口语陈述题』，将根据主问题和笔记扩展成句子。")
+
+        all_question_containers = []
+        if is_oral_recitation_type:
+            all_question_containers = await self.driver_service.page.locator(".oral-container.oral-state-record-margin").all()
+        else:
+            all_question_containers = await self.driver_service.page.locator(".p-oral-personal-state .oral-personal-state-wrapper").all()
+
+        logger.info(f"发现 {len(all_question_containers)} 个语音题容器。")
+
         for i, container in enumerate(all_question_containers):
-            logger.info(f"\n--- 开始处理第 {i + 1} 个语音简答题 ---")
+            logger.info(f"\n--- 开始处理第 {i + 1} 个语音题 ---")
             try:
-                question_locator = container.locator(".oral-personal-state-oral-container .oral-personal-state-sentence-container .component-htmlview")
+                prompt = ""
+                if is_oral_recitation_type:
+                    main_question_locator = container.locator(".score-sentence-container .component-htmlview")
+                    keywords_locator = container.locator(".sentence-container")
+                    main_question = (await main_question_locator.text_content(timeout=5000) or "").strip()
+                    keywords = (await keywords_locator.text_content(timeout=5000) or "").strip()
+
+                    if not keywords:
+                        logger.error("在当前容器中找不到关键词笔记，中止。")
+                        should_abort_page = True
+                        break
+                    logger.info(f"提取到主问题: '{main_question}'")
+                    logger.info(f"提取到关键词: '{keywords}'")
+                    prompt = prompts.ORAL_RECITATION_PROMPT.format(main_question=main_question, keywords=keywords)
+                else:
+                    question_locator = container.locator(".oral-personal-state-oral-container .oral-personal-state-sentence-container .component-htmlview")
+                    logger.info("正在并发提取当前题目信息...")
+                    sub_question_tasks = [self._get_article_text(container=container), question_locator.text_content(timeout=5000)]
+                    results = await asyncio.gather(*sub_question_tasks)
+                    current_question_media_text, question_text_raw = results[0], (results[1] or "")
+                    logger.info("当前题目信息提取完毕。")
+
+                    if not question_text_raw.strip():
+                        logger.error("在当前容器中找不到问题文本，中止。")
+                        should_abort_page = True
+                        break
+                    
+                    question_text = question_text_raw.strip()
+                    logger.info(f"提取到问题文本: '{question_text}'")
+                    combined_article_text = f"{page_level_article_text}\n{current_question_media_text}\n{shared_context}".strip()
+                    prompt = prompts.QAVOICE_PROMPT.format(direction_text=direction_text, article_text=combined_article_text, additional_material=additional_material, question_text=question_text)
                 
-                logger.info("正在并发提取当前题目信息...")
-                sub_question_tasks = [
-                    self._get_article_text(container=container),
-                    question_locator.text_content()
-                ]
-                results = await asyncio.gather(*sub_question_tasks)
-                current_question_media_text, question_text_raw = results
-                logger.info("当前题目信息提取完毕。")
-
-                if not question_text_raw:
-                    logger.error("在当前容器中找不到问题文本元素，中止本页所有语音简答题。")
-                    should_abort_page = True
-                    break
-                
-                question_text = question_text_raw.strip()
-                logger.info(f"提取到问题文本: '{question_text}'")
-
-                combined_article_text = f"{page_level_article_text}\n{current_question_media_text}\n{shared_context}".strip()
-
-                prompt = prompts.QAVOICE_PROMPT.format(
-                    direction_text=direction_text,
-                    article_text=combined_article_text,
-                    additional_material=additional_material,
-                    question_text=question_text
-                )
-
                 if not config.IS_AUTO_MODE:
                     logger.info("=" * 50)
                     logger.info("即将发送给 AI 的完整 Prompt 如下：")
                     logger.info(prompt)
                     logger.info("=" * 50)
-
                 if not (config.IS_AUTO_MODE and config.AUTO_MODE_NO_CONFIRM):
                     confirm = await asyncio.to_thread(input, "是否确认发送此 Prompt？[Y/n]: ")
                     if confirm.strip().upper() not in ["Y", ""]:
                         logger.warning("用户取消了 AI 调用，终止当前任务。")
                         should_abort_page = True
                         break
-
                 json_data = self.ai_service.get_chat_completion(prompt)
-                
                 if not json_data or "answer" not in json_data:
                     logger.error("AI未能生成有效答案或返回格式不正确，中止当前页面。")
                     should_abort_page = True
                     break
-
                 answer_text = json_data.get("answer")
                 logger.info(f"AI生成的答案: '{answer_text}'")
-
-                succeeded, should_abort_from_task = await self._execute_single_voice_task(
-                    container=container,
-                    ref_text=answer_text,
-                    retry_params=self.RETRY_PARAMS
-                )
-
+                succeeded, should_abort_from_task = await self._execute_single_voice_task(container=container, ref_text=answer_text, retry_params=self.RETRY_PARAMS)
                 if should_abort_from_task:
                     should_abort_page = True
                     break
 
             except Exception as e:
-                logger.error(f"处理第 {i + 1} 个语音简答题时发生严重错误: {e}")
+                logger.error(f"处理第 {i + 1} 个语音题时发生严重错误: {e}")
                 should_abort_page = True
                 break
             finally:
                 await self._cleanup_one_shot_injection()
-
+        
         logger.info("\n所有语音简答题处理完毕。")
-
         if should_abort_page:
             logger.warning("由于发生错误或分数不达标，已中止最终提交。")
             return False
-
         if not is_chained_task:
             should_submit = True
             if not (config.IS_AUTO_MODE and config.AUTO_MODE_NO_CONFIRM):

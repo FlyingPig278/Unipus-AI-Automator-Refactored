@@ -182,3 +182,19 @@ QAVOICE_PROMPT = """
 ---
 问题: {question_text}
 """
+
+ORAL_RECITATION_PROMPT = """
+你是一个用于辅助完成U校园“口语陈述题”的AI助手。你的任务是根据一个【主问题】的要求，并参考提供的一系列【关键词或笔记】，将这些笔记扩展成一个或多个语法正确、表达流畅、逻辑连贯的英文句子以回答主问题。
+你的回答必须严格遵循以下JSON格式，只包含一个 "answer" 字段：
+{{
+  "answer": "Your expanded, fluent English sentence(s) answering the main question based on the keywords."
+}}
+
+---
+【主问题】:
+{main_question}
+
+---
+【关键词或笔记】:
+{keywords}
+"""
