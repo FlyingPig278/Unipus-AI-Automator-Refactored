@@ -369,10 +369,10 @@ async def main():
        logger.always_print("程序已结束。")
 
    except RateLimitException:
-       logger.error("\n程序因操作过于频繁被服务器限制，已自动终止。")
+       logger.error("程序因操作过于频繁被服务器限制，已自动终止。")
        logger.warning("请等待几分钟后，再重新运行本程序。")
    except Exception as e:
-       logger.error(f"\n程序运行期间发生致命错误: {e}")
+       logger.error(f"程序运行期间发生致命错误: {e}")
    finally:
        if browser_service:
            logger.always_print("正在关闭浏览器...")

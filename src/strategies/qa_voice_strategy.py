@@ -104,7 +104,7 @@ class QAVoiceStrategy(BaseVoiceStrategy):
         logger.info(f"发现 {len(all_question_containers)} 个语音题容器。")
 
         for i, container in enumerate(all_question_containers):
-            logger.info(f"\n--- 开始处理第 {i + 1} 个语音题 ---")
+            logger.info(f"--- 开始处理第 {i + 1} 个语音题 ---")
             try:
                 prompt = ""
                 if is_oral_recitation_type:
@@ -175,7 +175,7 @@ class QAVoiceStrategy(BaseVoiceStrategy):
             finally:
                 await self._cleanup_one_shot_injection()
         
-        logger.info("\n所有语音简答题处理完毕。")
+        logger.info("所有语音简答题处理完毕。")
         if should_abort_page:
             logger.warning("由于发生错误或分数不达标，已中止最终提交。")
             return False, False

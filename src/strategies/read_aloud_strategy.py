@@ -50,7 +50,7 @@ class ReadAloudStrategy(BaseVoiceStrategy):
         should_abort_page = False
 
         for i, container in enumerate(question_containers):
-            logger.info(f"\n--- 开始处理第 {i + 1} 个朗读题 ---")
+            logger.info(f"--- 开始处理第 {i + 1} 个朗读题 ---")
 
             try:
                 ref_text_locator = container.locator(".sentence-html-container")
@@ -80,7 +80,7 @@ class ReadAloudStrategy(BaseVoiceStrategy):
                 should_abort_page = True
                 break
 
-        logger.info("\n所有语音题处理完毕。")
+        logger.info("所有语音题处理完毕。")
 
         if should_abort_page:
             logger.warning("由于发生错误或分数不达标，已中止最终提交。")
