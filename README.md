@@ -13,8 +13,8 @@
     Open your terminal or command prompt and run the following command:
 
     ```bash
-    git clone <your-repository-url-here>
-    cd <repository-folder-name>
+    git clone https://github.com/FlyingPig278/Unipus-AI-Automator-Refactored.git
+    cd Unipus-AI-Automator-Refactored
     ```
     
     *If `git clone` is not working or you prefer, you can also download the project as a ZIP file from the repository page and extract it manually.*
