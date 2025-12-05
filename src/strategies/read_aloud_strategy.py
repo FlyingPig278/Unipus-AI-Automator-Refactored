@@ -1,5 +1,4 @@
 import asyncio
-import unicodedata
 
 from src import config
 from src.services.ai_service import AIService
@@ -61,20 +60,10 @@ class ReadAloudStrategy(BaseVoiceStrategy):
                     break
                 
                 # 1. 提取原始文本
-                raw_text = (await ref_text_locator.text_content()).strip()
+                # 此处的文本将直接传递给AI服务，由其内部的净化函数统一处理
+                ref_text = (await ref_text_locator.text_content()).strip()
                 
-                # 2. 清洗和标准化文本，去除可能导致TTS引擎崩溃的不可见字符或非标准字符
-                normalized_text = unicodedata.normalize('NFKC', raw_text)
-                
-                # 3. 额外将特殊的标点符号替换为基础的ASCII等价物，提高兼容性
-                ref_text = normalized_text.replace('—', '-') \
-                                          .replace('…', '...') \
-                                          .replace('“', '"') \
-                                          .replace('”', '"') \
-                                          .replace('‘', "'") \
-                                          .replace('’', "'")
-                
-                logger.info(f"提取并清洗待朗读文本: '{ref_text}'")
+                logger.info(f"提取待朗读文本: '{ref_text}'")
 
                 succeeded, should_abort_from_task = await self._execute_single_voice_task(
                     container=container,

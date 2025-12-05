@@ -2,8 +2,10 @@
 import asyncio
 import json
 import os
+import re
 import subprocess
 import tempfile
+import unicodedata
 import uuid  # 新增导入
 from pathlib import Path
 
@@ -79,18 +81,70 @@ class LocalTTSEngine:
             if self.model_config_path.exists(): self.model_config_path.unlink()
             raise
 
+    @staticmethod
+    def _clean_text_for_tts(text: str) -> str:
+        """
+        对文本进行净化，为纯英文TTS引擎准备兼容性良好的输入。
+        """
+        if not isinstance(text, str):
+            return ""
+
+        # 1. 使用 NFKC 规范化处理兼容性字符（例如全角到半角）
+        normalized_text = unicodedata.normalize('NFKC', text)
+
+        # 2. 定义一个更全面的特殊标点符号替换表
+        replacements = {
+            '—': '-',  # EM DASH
+            '–': '-',  # EN DASH
+            '…': '...',  # HORIZONTAL ELLIPSIS
+            '「': '"',  # LEFT CORNER BRACKET
+            '」': '"',  # RIGHT CORNER BRACKET
+            '『': '"',  # LEFT WHITE CORNER BRACKET
+            '』': '"',  # RIGHT WHITE CORNER BRACKET
+            '《': '"',  # LEFT DOUBLE ANGLE BRACKET
+            '》': '"',  # RIGHT DOUBLE ANGLE BRACKET
+            '〈': "'",  # LEFT ANGLE BRACKET
+            '〉': "'",  # RIGHT ANGLE BRACKET
+            '“': '"',
+            '”': '"',
+            '‘': "'",
+            '’': "'",
+            '`': "'",  # 反引号
+            '´': "'",  # 锐音符
+            '′': "'",  # 分符号
+            '″': '"',  # 秒符号
+        }
+        for old, new in replacements.items():
+            normalized_text = normalized_text.replace(old, new)
+
+        # 3. 白名单过滤：只保留英文、数字和指定的标点符号
+        # 使用正则表达式移除所有不符合白名单的字符
+        allowed_chars_pattern = r"[^a-zA-Z0-9\s.,?!'\"():;-]"
+        clean_text = re.sub(allowed_chars_pattern, '', normalized_text)
+        
+        # 4. 去除多余的空白字符
+        clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+
+        return clean_text
+
     async def synthesize(self, text: str, length_scale: float = 1.0, noise_scale: float = 0.667, noise_w: float = 0.8) -> bytes | None:
         """
         使用Piper TTS将文本合成为语音，并返回WAV文件的字节数据。
         新增length_scale, noise_scale, noise_w参数以控制语速和发音风格。
         """
+        # 步骤 1: 净化文本输入
+        clean_text = self._clean_text_for_tts(text)
+        if not clean_text:
+            logger.warning(f"原始文本 '{text[:30]}...' 净化后为空，跳过TTS合成。")
+            return None
+
         # 创建一个临时的WAV文件路径
         output_path = Path(tempfile.gettempdir()) / f"piper_output_{uuid.uuid4().hex}.wav"
         
         try:
             await self.ensure_model_exists()
 
-            logger.debug(f"正在使用Piper TTS合成语音 (语速: {length_scale}, noise_scale: {noise_scale}, noise_w: {noise_w}): '{text[:30]}...'")
+            logger.debug(f"正在使用Piper TTS合成语音 (语速: {length_scale}, noise_scale: {noise_scale}, noise_w: {noise_w}): '{clean_text[:30]}...'")
             piper_command = [
                 "piper", 
                 "--model", str(self.model_path),
@@ -105,7 +159,7 @@ class LocalTTSEngine:
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
             )
             
-            _, stderr = await process.communicate(text.encode('utf-8'))
+            _, stderr = await process.communicate(clean_text.encode('utf-8'))
             
             if process.returncode == 0 and output_path.exists():
                 with open(output_path, "rb") as f:

@@ -349,7 +349,7 @@ async def main():
            mode = await asyncio.to_thread(input, "请输入模式编号: ")
 
            if mode == '1':
-               config.PROCESS_ONLY_INCOMPLETE_TASKS = True
+               # config.PROCESS_ONLY_INCOMPLETE_TASKS = True
                await run_auto_mode(browser_service, ai_service, cache_service)
            elif mode == '2':
                await run_manual_debug_mode(browser_service, ai_service, cache_service)
