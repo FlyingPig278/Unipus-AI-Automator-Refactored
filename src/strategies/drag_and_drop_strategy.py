@@ -39,28 +39,25 @@ class DragAndDropStrategy(BaseStrategy):
             base_breadcrumb_parts = await self.driver_service.get_breadcrumb_parts()
             if not base_breadcrumb_parts:
                 raise Exception("无法获取页面面包屑，终止策略。")
-        except Exception as e:
-            logger.error(f"提取面包屑时出错: {e}")
-            return False, False
 
-        # 根据是否是链式任务，构建最终用于缓存的breadcrumb
-        current_breadcrumb_parts = base_breadcrumb_parts
-        if is_chained_task and sub_task_index != -1:
-            current_breadcrumb_parts = base_breadcrumb_parts + [str(sub_task_index)]
-            logger.info(f"题中题缓存路径：{' -> '.join(current_breadcrumb_parts)}")
+            # 根据是否是链式任务，构建最终用于缓存的breadcrumb
+            current_breadcrumb_parts = base_breadcrumb_parts
+            if is_chained_task and sub_task_index != -1:
+                current_breadcrumb_parts = base_breadcrumb_parts + [str(sub_task_index)]
+                logger.info(f"题中题缓存路径：{' -> '.join(current_breadcrumb_parts)}")
 
-        cache_write_needed = False
-        target_order = []
-        use_cache = False
+            cache_write_needed = False
+            target_order = []
+            use_cache = False
 
-        if not is_chained_task or sub_task_index != -1: # 只有非链式任务 或 链式任务的子任务才尝试从缓存读取
-            task_page_cache = self.cache_service.get_task_page_cache(current_breadcrumb_parts)
-            if not config.FORCE_AI and task_page_cache and task_page_cache.get('type') == self.strategy_type and task_page_cache.get('answers'):
-                logger.info("在缓存中找到此页面的答案。")
-                target_order = task_page_cache['answers']
-                use_cache = True
-            elif config.FORCE_AI and task_page_cache:
-                logger.info("FORCE_AI为True，强制忽略缓存，调用AI。")
+            if not is_chained_task or sub_task_index != -1: # 只有非链式任务 或 链式任务的子任务才尝试从缓存读取
+                task_page_cache = self.cache_service.get_task_page_cache(current_breadcrumb_parts)
+                if not config.FORCE_AI and task_page_cache and task_page_cache.get('type') == self.strategy_type and task_page_cache.get('answers'):
+                    logger.info("在缓存中找到此页面的答案。")
+                    target_order = task_page_cache['answers']
+                    use_cache = True
+                elif config.FORCE_AI and task_page_cache:
+                    logger.info("FORCE_AI为True，强制忽略缓存，调用AI。")
             
             if not target_order:
                 if is_chained_task and sub_task_index == -1: # 链式任务但未提供sub_task_index，不应该走到这里

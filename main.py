@@ -100,6 +100,36 @@ async def _cache_chained_answers(
 
 
 async def run_strategy_on_current_page(browser_service: DriverService, ai_service: AIService, cache_service: CacheService):
+    """
+    分析当前页面，并根据页面特征（如“提交”或“下一题”按钮）选择并执行最合适的策略。
+    新增了对“快速缓存模式”的支持。
+    """
+    # 定义可缓存的策略白名单
+    cacheable_strategies = [
+        SingleChoiceStrategy,
+        MultipleChoiceStrategy,
+        FillInTheBlankStrategy,
+        DragAndDropStrategy,
+    ]
+    
+    # 创建一个本次运行要使用的策略列表副本
+    strategies_to_run = AVAILABLE_STRATEGIES
+
+    # 快速缓存模式的核心逻辑
+    if config.FAST_CACHE_MODE:
+        base_breadcrumb_parts_for_cache_check = await browser_service.get_breadcrumb_parts()
+        
+        # 对于“题中题”模式，基础面包屑不足以判断，但对于单页题很有效
+        # 我们在这里做一个初步检查，如果基础路径有缓存，很可能已经做过
+        task_page_cache = cache_service.get_task_page_cache(base_breadcrumb_parts_for_cache_check)
+        if task_page_cache and task_page_cache.get('answers'):
+            logger.info(f"快速缓存模式：检测到页面 {'>'.join(base_breadcrumb_parts_for_cache_check)} 已有缓存，跳过。")
+            return
+
+        # 过滤策略，只保留白名单中的可缓存策略
+        logger.info("快速缓存模式：已启动，仅运行客观题策略以生成缓存。")
+        strategies_to_run = [s for s in AVAILABLE_STRATEGIES if s in cacheable_strategies]
+
     try:
         base_breadcrumb_parts = await browser_service.get_breadcrumb_parts()
         btn_text = ""
@@ -113,7 +143,7 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
         if "提 交" in btn_text or "提交" in btn_text:
             logger.info("检测到“提交”按钮，执行单页策略...")
             current_strategy = None
-            for StrategyClass in AVAILABLE_STRATEGIES:
+            for StrategyClass in strategies_to_run: # 使用过滤后的策略列表
                 if await StrategyClass.check(browser_service):
                     current_strategy = StrategyClass(browser_service, ai_service, cache_service)
                     logger.info(f"匹配到策略: {StrategyClass.__name__}")
@@ -134,7 +164,7 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
 
             while True:
                 current_strategy_instance = None
-                for StrategyClass in AVAILABLE_STRATEGIES:
+                for StrategyClass in strategies_to_run: # 使用过滤后的策略列表
                     if await StrategyClass.check(browser_service):
                         current_strategy_instance = StrategyClass(browser_service, ai_service, cache_service)
                         logger.info(f"匹配到子题策略: {StrategyClass.__name__}")
@@ -142,11 +172,22 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
                 
                 if current_strategy_instance:
                     try:
-                        succeeded, cache_written = await current_strategy_instance.execute(
-                            shared_context=shared_context,
-                            is_chained_task=True,
-                            sub_task_index=sub_task_index
-                        )
+                        # 在快速缓存模式下，对每个子任务也进行缓存检查
+                        if config.FAST_CACHE_MODE:
+                            sub_task_breadcrumb = base_breadcrumb_parts + [str(sub_task_index)]
+                            if cache_service.get_task_page_cache(sub_task_breadcrumb):
+                                logger.info(f"快速缓存模式：子题 {sub_task_index} 已有缓存，跳过。")
+                                # 模拟一个成功的、但没有写入缓存的执行结果
+                                succeeded, cache_written = True, False
+                            else:
+                                succeeded, cache_written = await current_strategy_instance.execute(
+                                    shared_context=shared_context, is_chained_task=True, sub_task_index=sub_task_index
+                                )
+                        else:
+                             succeeded, cache_written = await current_strategy_instance.execute(
+                                shared_context=shared_context, is_chained_task=True, sub_task_index=sub_task_index
+                            )
+
                         if cache_written:
                             tasks_to_cache.append({'index': sub_task_index, 'type': current_strategy_instance.strategy_type})
                         if not succeeded:
@@ -179,7 +220,6 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
                     await browser_service.handle_submission_confirmation()
                     logger.success("“题中题”任务完成。")
 
-                    # 根据用户要求，只有在链中有需要缓存的题目时，才执行回写
                     if tasks_to_cache:
                         await _cache_chained_answers(browser_service, cache_service, tasks_to_cache, base_breadcrumb_parts)
                     break
@@ -189,7 +229,7 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
         else:
             logger.info("此页面无提交或下一题按钮，将检查是否有适用的无操作策略...")
             current_strategy = None
-            for StrategyClass in AVAILABLE_STRATEGIES:
+            for StrategyClass in strategies_to_run: # 使用过滤后的策略列表
                 if await StrategyClass.check(browser_service):
                     current_strategy = StrategyClass(browser_service, ai_service, cache_service)
                     logger.info(f"匹配到策略: {StrategyClass.__name__}")
@@ -199,8 +239,12 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
                 if isinstance(current_strategy, (RolePlayStrategy, DiscussionStrategy)):
                     logger.info(f"检测到 {current_strategy.__class__.__name__}，强制以非链式任务模式(is_chained_task=False)执行。")
                     await current_strategy.execute(is_chained_task=False)
+                # 在快速缓存模式下，不执行NoReply等非缓存策略
+                elif not config.FAST_CACHE_MODE:
+                     await current_strategy.execute(is_chained_task=True)
                 else:
-                    await current_strategy.execute(is_chained_task=True)
+                    logger.info(f"快速缓存模式：跳过非缓存策略 {current_strategy.__class__.__name__}。")
+
             else:
                 logger.info("未找到任何适用策略，此页面可能为纯信息页。继续下一个任务。")
 
@@ -299,15 +343,25 @@ async def main():
            logger.always_print("  请选择运行模式:")
            logger.always_print("  [1] 全自动模式 (扫描并完成所有任务)")
            logger.always_print("  [2] 手动调试模式 (针对特定页面进行调试)")
-           logger.always_print("  [3] 退出程序")
+           logger.always_print("  [3] 快速缓存模式 (仅为客观题生成缓存)")
+           logger.always_print("  [4] 退出程序")
            logger.always_print("="*30)
            mode = await asyncio.to_thread(input, "请输入模式编号: ")
 
            if mode == '1':
+               config.PROCESS_ONLY_INCOMPLETE_TASKS = True
                await run_auto_mode(browser_service, ai_service, cache_service)
            elif mode == '2':
                await run_manual_debug_mode(browser_service, ai_service, cache_service)
            elif mode == '3':
+               logger.info("已激活快速缓存模式。")
+               config.FAST_CACHE_MODE = True
+               config.PROCESS_ONLY_INCOMPLETE_TASKS = False
+               await run_auto_mode(browser_service, ai_service, cache_service)
+               # 重置标志以备下次选择
+               config.FAST_CACHE_MODE = False
+               config.PROCESS_ONLY_INCOMPLETE_TASKS = True
+           elif mode == '4':
                break
            else:
                logger.warning("输入无效，请输入 1, 2, 或 3。")
