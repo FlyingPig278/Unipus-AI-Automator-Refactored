@@ -293,7 +293,7 @@ class DriverService:
                 logger.info(f"单元 {unit_index} 不可见，开始智能滚动查找...")
                 
                 # 策略：先滚动到最左边，再向右查找
-                prev_button_locator = self.page.locator(".unipus-tabs_tabPre__Y2OHd")
+                prev_button_locator = self.page.locator("class*=[unipus-tabs_tabPre]")
                 for _ in range(20): # 安全循环
                     if not (await prev_button_locator.is_visible(timeout=500) and await prev_button_locator.is_enabled()):
                         break # 按钮不见或禁用，说明已到最左
@@ -303,7 +303,7 @@ class DriverService:
 
                 # 如果此时目标仍不可见，则开始向右滚动查找
                 if not await unit_locator.is_visible():
-                    next_button_locator = self.page.locator(".unipus-tabs_tabNext__Vcn4D")
+                    next_button_locator = self.page.locator("class*=[unipus-tabs_tabNext]")
                     for _ in range(20): # 安全循环
                         if await unit_locator.is_visible(): break # 找到了
                         if not (await next_button_locator.is_visible(timeout=500) and await next_button_locator.is_enabled()):
