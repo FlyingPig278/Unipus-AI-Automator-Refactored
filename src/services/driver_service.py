@@ -219,27 +219,32 @@ class DriverService:
         current_course_url = self.page.url
         try:
             await self.page.locator(config.UNIT_TABS).first.wait_for()
-            units_locators = await self.page.locator(config.UNIT_TABS).all()
+            # 只获取 data-index 属性，避免过早与元素交互
+            units_with_indices = []
+            all_unit_locators = await self.page.locator(config.UNIT_TABS).all()
+            for locator in all_unit_locators:
+                index = await locator.get_attribute("data-index")
+                name = (await locator.text_content() or "").strip().split('\n')[0]
+                if index is not None:
+                    units_with_indices.append({"index": index, "name": name})
+    
         except PlaywrightError:
             logger.error("未能定位到课程单元列表，请确保当前页面是课程主页。")
             return []
-
-        for unit_locator in units_locators:
-            unit_name = (await unit_locator.text_content()).strip().split('\n')[0]
-            
+    
+        for unit_info in units_with_indices:
+            unit_index = unit_info["index"]
+            unit_name = unit_info["name"]
             logger.info(f"正在检查单元: {unit_name}")
             try:
-                unit_index = await unit_locator.get_attribute("data-index")
-                if "tabActive" not in (await unit_locator.get_attribute("class")):
-                    await unit_locator.scroll_into_view_if_needed()
-                    await unit_locator.click()
-                    await self.page.locator(f'[data-index="{unit_index}"][class*="tabActive"]').wait_for()
-                    await asyncio.sleep(0.3)
-
+                # 使用重构后的健壮的点击方法
+                await self._click_unit_tab(unit_index)
+                await asyncio.sleep(0.3)  # 等待任务列表加载
+    
                 active_area_locator = self.page.locator(config.ACTIVE_UNIT_AREA)
                 await active_area_locator.locator(config.TASK_ITEM_CONTAINER).first.wait_for()
                 task_locators = await active_area_locator.locator(config.TASK_ITEM_CONTAINER).all()
-
+    
                 for i, task_locator in enumerate(task_locators):
                     text_content = await task_locator.text_content()
                     
@@ -263,10 +268,65 @@ class DriverService:
                         })
             except Exception as e:
                 logger.error(f"处理单元 '{unit_name}' 时出错: {e}")
-                if unit_name=='Unit 5':
-                    raise
+                # 在开发/调试时，如果特定单元出错，可能希望抛出异常以停止程序
+                # if unit_name == 'Unit 5': raise
+
         logger.info(f"待完成任务列表获取完毕，共 {len(pending_tasks)} 个任务。")
         return pending_tasks
+
+    async def _click_unit_tab(self, unit_index: str):
+        """
+        一个健壮的私有方法，用于点击指定的单元Tab。
+        它会先将滚动条重置到最左边，然后向右滚动直到找到目标，最后点击。
+        """
+        try:
+            unit_locator = self.page.locator(f'[data-index="{unit_index}"]')
+            current_class = await unit_locator.get_attribute("class") or ""
+            
+            # 如果目标单元已激活，则无需任何操作
+            if "tabActive" in current_class:
+                logger.info(f"单元 {unit_index} 已是激活状态，无需点击。")
+                return
+
+            # 仅在目标不可见时才执行重置和滚动，以提高效率
+            if not await unit_locator.is_visible(timeout=1000):
+                logger.info(f"单元 {unit_index} 不可见，开始智能滚动查找...")
+                
+                # 策略：先滚动到最左边，再向右查找
+                prev_button_locator = self.page.locator(".unipus-tabs_tabPre__Y2OHd")
+                for _ in range(20): # 安全循环
+                    if not (await prev_button_locator.is_visible(timeout=500) and await prev_button_locator.is_enabled()):
+                        break # 按钮不见或禁用，说明已到最左
+                    await prev_button_locator.click()
+                    await self.page.wait_for_timeout(300)
+                logger.info("滚动条已重置到最左侧。")
+
+                # 如果此时目标仍不可见，则开始向右滚动查找
+                if not await unit_locator.is_visible():
+                    next_button_locator = self.page.locator(".unipus-tabs_tabNext__Vcn4D")
+                    for _ in range(20): # 安全循环
+                        if await unit_locator.is_visible(): break # 找到了
+                        if not (await next_button_locator.is_visible(timeout=500) and await next_button_locator.is_enabled()):
+                            raise PlaywrightError(f"已滚动到最右端，但仍未找到单元 {unit_index}")
+                        await next_button_locator.click()
+                        await self.page.wait_for_timeout(500)
+                    
+                    if not await unit_locator.is_visible():
+                        raise PlaywrightError(f"向右滚动20次后，仍无法找到单元 {unit_index}")
+            
+            logger.info(f"成功定位到单元 {unit_index}，准备点击。")
+            # 使用 dispatch_event 来避免 click() 方法自带的、可能出错的滚动行为
+            await unit_locator.dispatch_event('click')
+            
+            await self.page.locator(f'[data-index="{unit_index}"][class*="tabActive"]').wait_for()
+            logger.info(f"已确认单元 {unit_index} 已激活。")
+
+        except PlaywrightError as e:
+            logger.error(f"点击单元Tab {unit_index} 时发生Playwright错误: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"点击单元Tab {unit_index} 时发生未知异常: {e}")
+            raise
 
     async def navigate_to_task(self, course_url: str, unit_index: str, task_index: int):
         """
@@ -275,23 +335,13 @@ class DriverService:
         logger.info(f"正在导航到单元 {unit_index}，任务索引 {task_index}...")
 
         # 1. 重新回到课程主页，确保页面状态一致
-        await self.page.goto(course_url)
+        if self.page.url != course_url:
+            await self.page.goto(course_url)
+            await self.page.wait_for_load_state('networkidle')
 
-        # 2. 定位并点击指定的单元
-        try:
-            unit_locator = self.page.locator(f'[data-index="{unit_index}"]')
-            await unit_locator.scroll_into_view_if_needed()
-            await unit_locator.click()
-            # 兼容性：确保等待到正确的单元变为激活状态
-            await self.page.locator(f'[data-index="{unit_index}"][class*="tabActive"]').wait_for()
-            logger.info(f"已确认单元 {unit_index} 已激活。")
 
-        except PlaywrightError:
-            logger.error(f"在导航到单元 {unit_index} 时超时，可能未找到单元或页面结构已更改。")
-            raise
-        except Exception as e:
-            logger.error(f"在导航到单元 {unit_index} 时发生异常: {e}")
-            raise
+        # 2. 使用重构后的健壮方法点击指定的单元
+        await self._click_unit_tab(unit_index)
 
         # 3. 定位并点击指定的任务
         try:
