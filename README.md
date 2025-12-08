@@ -1,79 +1,55 @@
-# Setup Guide
+# **Runtime Setup**
 
-## Prerequisites
+## **1. Configuration (Required for all versions)**
 
-- **Python**: Python 3.13 is recommended. Python 3.12 is untested. **Do not use Python 3.14 or newer.**
-- During Python installation, ensure you check the box that says **"Add Python to PATH"**.
-- **Git**: You need Git installed to clone the repository.
+Before running the application, you must configure your credentials.
 
-## Installation Steps
+1. Locate the file .env.example in the root directory.  
+2. Rename it to .env.  
+3. Open .env with a text editor and fill in the following values:  
+   * `U_USERNAME`: Target platform username.  
+   * `U_PASSWORD`: Target platform password.  
+   * `DEEPSEEK_API_KEY`: Your API key (Apply at https://platform.deepseek.com/api_keys). **Note**: Minimum top-up is 1 CNY, which is more than enough for extensive use.
 
-1.  **Clone the repository**
+## **2. Launch Options**
 
-    Open your terminal or command prompt and run the following command:
+Choose one of the following methods to run the application.
 
-    ```bash
-    git clone https://github.com/FlyingPig278/Unipus-AI-Automator-Refactored.git
-    cd Unipus-AI-Automator-Refactored
-    ```
-    
-    *If `git clone` is not working or you prefer, you can also download the project as a ZIP file from the repository page and extract it manually.*
+### **Option A: Portable Edition (Recommended)**
 
-2.  **Create and activate a virtual environment**
+No installation required. Best for users without a pre-configured Python environment.
 
-    This keeps the project's dependencies isolated.
+1. Download the **Portable** zip file from the release page.  
+2. Extract the archive to a folder.  
+3. Ensure your .env file is configured (see step 1).  
+4. Run the `run.bat`.  
+   **Note**: This version includes an embedded runtime and browser binary. No external downloads are required.
 
-    ```bash
-    # Create the virtual environment
-    python -m venv .venv
-    ```
+### **Option B: Lite / Source Edition**
 
-    Now, activate it:
-    -   **On Windows (Command Prompt or PowerShell):**
-        ```cmd
-        .\.venv\Scripts\activate
-        ```
-    -   **On macOS/Linux (Bash/Zsh):**
-        ```bash
-        source .venv/bin/activate
-        ```
-    You will see `(.venv)` at the beginning of your terminal prompt if it's activated correctly.
+For users with an existing Python environment.
 
-3.  **Install dependencies**
+**Prerequisites:**
 
-    The required packages are listed in `requirements.txt`. Installation can be slow due to the size of the packages. Using a mirror is highly recommended for faster downloads.
+* **Python**: Version **3.13** (Recommended) or 3.12.  
+  * *Warning: Do not use Python 3.14+ (Dependencies incompatible).*  
+  * Ensure **"Add Python to PATH"** is checked during installation.  
+* **Git**: Required to clone the repository (or download Source Zip).
 
-    -   **Option A (Standard Pip):**
-        ```bash
-        pip install -r requirements.txt
-        ```
+**Setup & Run:**
 
-    -   **Option B (Recommended for faster download speeds):**
-        This uses a popular mirror to accelerate the download.
-        ```bash
-        pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
-        ```
-        
-4.  **Install browser binary**
+1. Clone the repository:  
+   `git clone https://github.com/FlyingPig278/Unipus-AI-Automator-Refactored.git`  
 
-    This project uses Playwright, which needs a browser to operate. To minimize download size, you only need to install Chromium.
+2. Run the automated `run.bat`.  
+   * The script will automatically:  
+     * Create a virtual environment (.venv).  
+     * Install/Update dependencies from the mirror.  
+     * Download the required browser binary (Chromium).  
+     * Launch the application.
 
-    ```bash
-    playwright install chromium
-    ```
+## **Troubleshooting**
 
-5.  **Configure environment variables**
-
-    The application requires credentials and API keys to run.
-
-    -   Find the file named `.env.example` and rename it to `.env`.
-    -   Open the `.env` file with a text editor.
-    -   Fill in the required values for `U_USERNAME`, `U_PASSWORD`, and `DEEPSEEK_API_KEY`. (You can apply for a DeepSeek API key at https://platform.deepseek.com/api_keys).
-
-6.  **Run the application**
-
-    Once all the steps above are completed, you can run the script:
-
-    ```bash
-    python main.py
-    ```
+* **Browser Issues:** If the application fails to launch the browser, ensure you have a stable internet connection during the first run (Lite version only) to allow the binary download.  
+* **API Errors:** Verify your key in the .env file is active and has sufficient balance.  
+* **Path Errors:** Do not move the batch scripts out of the root directory.
