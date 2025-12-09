@@ -26,6 +26,7 @@ rich_handler = RichHandler(
     show_path=False,
     markup=True
 )
+rich_handler.setLevel(logging.INFO)
 
 # 3. 配置 FileHandler for DEBUG level
 debug_file_handler = logging.FileHandler(DEBUG_LOG_FILE, encoding='utf-8')
