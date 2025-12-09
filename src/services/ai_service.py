@@ -288,13 +288,33 @@ class AIService:
             response = requests.get(url, stream=True, headers=config.HEADERS, timeout=30)
             response.raise_for_status()
 
-            path_part = url.split('?')[0]
-            suffix = os.path.splitext(path_part)[1] or '.tmp'
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+            # 创建一个自定义的临时文件夹
+            temp_dir = Path(".temp_downloads")
+            temp_dir.mkdir(parents=True, exist_ok=True)  # 如果文件夹不存在就创建
+
+            # 去掉 URL 中的查询参数部分
+            path_part = url.split('?')[0]  # 去掉查询参数
+            path_part = path_part.split('#')[0]  # 去掉 URL 中的 fragment 部分（#后面的部分）
+
+            # 提取文件后缀
+            suffix = os.path.splitext(path_part)[1]
+
+            if not suffix:
+                # 如果没有后缀，通过 MIME 类型来推断
+                content_type = response.headers.get('Content-Type')
+                if 'video' in content_type:
+                    suffix = '.mp4'
+                elif 'audio' in content_type:
+                    suffix = '.mp3'
+                else:
+                    suffix = '.tmp'  # 默认后缀
+
+            # 保存文件到指定目录并给文件添加正确的后缀
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, dir=temp_dir) as temp_file:
                 temp_file_path = temp_file.name
                 for chunk in response.iter_content(chunk_size=8192):
                     temp_file.write(chunk)
-            
+
             logger.info(f"媒体文件已临时保存至: {temp_file_path}")
             return self.transcribe_media_file(temp_file_path)
 
