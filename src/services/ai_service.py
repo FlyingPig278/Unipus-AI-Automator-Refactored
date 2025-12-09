@@ -13,6 +13,7 @@ import requests
 import whisper
 from openai import OpenAI
 from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam
+from rich.progress import Progress, BarColumn, TextColumn, DownloadColumn, TransferSpeedColumn
 
 import src.config as config
 from src import prompts
@@ -40,9 +41,13 @@ class LocalTTSEngine:
             await self._download_model()
 
     async def _download_model(self):
-        """从HuggingFace动态构建URL并下载Piper语音模型。"""
+        """
+        使用requests库和rich进度条，以更安全的方式下载Piper语音模型。
+        - 检查HTTP状态码。
+        - 下载到.part临时文件，成功后再重命名。
+        - 清理失败的下载。
+        """
         try:
-            # 从模型名称解析URL组件，例如 "en_US-lessac-medium"
             parts = self.model_name.split('-')
             if len(parts) != 3:
                 raise ValueError(f"模型名称 '{self.model_name}' 格式不正确，应为 'locale-voice-quality'。")
@@ -50,36 +55,80 @@ class LocalTTSEngine:
             locale, voice, quality = parts
             lang = locale.split('_')[0]
 
-            base_url = f"https://huggingface.co/rhasspy/piper-voices/resolve/main/{lang}/{locale}/{voice}/{quality}/{self.model_name}"
+            base_url = f"https://hf-mirror.com/rhasspy/piper-voices/resolve/main/{lang}/{locale}/{voice}/{quality}/{self.model_name}"
             
             logger.info(f"根据模型名称动态构建下载URL: {base_url}")
-            
-            # 下载模型文件
-            logger.info(f"正在下载模型: {self.model_name}.onnx...")
-            process = await asyncio.create_subprocess_shell(
-                f'curl -L -o "{self.model_path}" "{base_url}.onnx"'
+
+            # 定义要下载的文件和它们的目标路径
+            files_to_download = {
+                f"{self.model_name}.onnx": self.model_path,
+                f"{self.model_name}.onnx.json": self.model_config_path
+            }
+
+            # 使用 rich.progress 创建一个美观的进度条
+            progress = Progress(
+                TextColumn("[bold blue]{task.fields[filename]}", justify="right"),
+                BarColumn(bar_width=None),
+                "[progress.percentage]{task.percentage:>3.1f}%",
+                "•",
+                DownloadColumn(),
+                "•",
+                TransferSpeedColumn(),
             )
-            await process.wait()
-            
-            # 下载模型配置文件
-            logger.info(f"正在下载模型配置文件: {self.model_name}.onnx.json...")
-            process = await asyncio.create_subprocess_shell(
-                f'curl -L -o "{self.model_config_path}" "{base_url}.onnx.json"'
-            )
-            await process.wait()
-            
-            if self.model_path.exists() and self.model_path.stat().st_size > 1000 and \
-               self.model_config_path.exists() and self.model_config_path.stat().st_size > 100:
-                logger.info("✅ 模型下载和文件大小校验完成。")
-            else:
-                raise FileNotFoundError("模型文件下载失败或文件大小异常。请检查.models文件夹下的文件。")
+
+            def download_job(url, dest_path):
+                dest_path_part = dest_path.with_suffix(dest_path.suffix + '.part')
+                task_id = progress.add_task("download", filename=dest_path.name, start=False)
                 
+                try:
+                    response = requests.get(url, stream=True, timeout=30)
+                    response.raise_for_status()
+                    
+                    total_size = int(response.headers.get('content-length', 0))
+                    progress.start_task(task_id)
+                    progress.update(task_id, total=total_size)
+                    
+                    with open(dest_path_part, 'wb') as f:
+                        for chunk in response.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                            progress.update(task_id, advance=len(chunk))
+
+                    # 下载成功后重命名
+                    dest_path_part.rename(dest_path)
+                    logger.debug(f"文件 '{dest_path.name}' 下载成功。")
+
+                except requests.RequestException as e:
+                    # 如果发生网络错误，清理.part文件
+                    if dest_path_part.exists():
+                        dest_path_part.unlink()
+                    # 将异常向上抛出，以便外层可以捕获
+                    raise e
+                finally:
+                    progress.stop_task(task_id)
+                    progress.update(task_id, visible=False)
+
+
+            with progress:
+                for filename, path in files_to_download.items():
+                    url = f"{base_url}{'.onnx' if filename.endswith('.onnx') else '.onnx.json'}"
+                    # 使用 to_thread 在异步函数中运行同步的下载代码
+                    await asyncio.to_thread(download_job, url, path)
+
+            # 最终校验文件是否存在
+            if self.model_path.exists() and self.model_config_path.exists():
+                logger.success("✅ 模型及配置文件下载完成。")
+            else:
+                raise FileNotFoundError("模型文件下载后校验失败，一个或多个文件不存在。")
+
         except Exception as e:
             logger.error(f"模型下载失败: {e}")
-            # 如果下载失败，删除可能已创建的损坏文件
-            if self.model_path.exists(): self.model_path.unlink()
-            if self.model_config_path.exists(): self.model_config_path.unlink()
+            # 再次确保清理
+            for _, path in files_to_download.items():
+                part_file = path.with_suffix(path.suffix + '.part')
+                if part_file.exists():
+                    part_file.unlink()
             raise
+
 
     @staticmethod
     def _clean_text_for_tts(text: str) -> str:
