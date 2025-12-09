@@ -15,11 +15,9 @@ __pycache__/
 # Logs
 .logs/
 
-# Manually downloaded WebDriver
-msedgedriver.exe
-
 /trace.zip
-/.models/en_US-lessac-medium.onnx
-/.models/en_US-lessac-medium.onnx.json
-/question_types.md
 /.models/
+/.temp_downloads/
+/run-portable.bat
+/python-embed/
+/package.bat
