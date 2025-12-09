@@ -8,7 +8,7 @@ import tempfile
 import unicodedata
 import uuid  # 新增导入
 from pathlib import Path
-
+import sys
 import requests
 import whisper
 from openai import OpenAI
@@ -31,6 +31,10 @@ class LocalTTSEngine:
         # 将模型文件存放在项目根目录的.models文件夹中，方便管理
         self.models_dir = Path(".models")
         self.models_dir.mkdir(exist_ok=True)
+
+        python_dir = Path(sys.executable).parent
+        self.piper_exe_path = python_dir / "piper.exe"
+
         self.model_path = self.models_dir / f"{self.model_name}.onnx"
         self.model_config_path = self.models_dir / f"{self.model_name}.onnx.json"
 
@@ -193,19 +197,30 @@ class LocalTTSEngine:
         try:
             await self.ensure_model_exists()
 
+            # 检查 piper.exe 是否存在于便携版Python的Scripts目录中
+            if not self.piper_exe_path.exists():
+                logger.error(f"TTS引擎 'piper.exe' 未在便携式环境的Scripts文件夹中找到。")
+                logger.error(f"预期路径: {self.piper_exe_path}")
+                logger.error("请确认 'piper-tts' 是否已通过 'run.bat' 脚本正确安装。")
+                return None
+
             logger.debug(f"正在使用Piper TTS合成语音 (语速: {length_scale}, noise_scale: {noise_scale}, noise_w: {noise_w}): '{clean_text[:30]}...'")
             piper_command = [
-                "piper", 
+                str(self.piper_exe_path),
                 "--model", str(self.model_path),
                 "--output_file", str(output_path),
-                "--length_scale", str(length_scale), # 添加语速控制参数
-                "--noise_scale", str(noise_scale),     # 添加噪声控制参数
-                "--noise_w", str(noise_w)              # 添加音素宽度变化控制参数
+                "--length_scale", str(length_scale),
+                "--noise_scale", str(noise_scale),
+                "--noise_w", str(noise_w)
             ]
+
+            # 在Windows上，使用CREATE_NO_WINDOW标志来隐藏子进程的控制台窗口
+            creation_flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             
             process = await asyncio.create_subprocess_exec(
                 *piper_command,
-                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                creationflags=creation_flags
             )
             
             _, stderr = await process.communicate(clean_text.encode('utf-8'))
@@ -220,7 +235,8 @@ class LocalTTSEngine:
                 raise Exception(f"Piper执行失败: {stderr.decode('utf-8', errors='ignore')}")
 
         except FileNotFoundError:
-             logger.error("找不到 'piper' 命令。请确保您已经通过 'pip install piper-tts' 安装了它，并且它在系统的PATH中。")
+             # 这个异常理论上不应该再被触发，因为我们已经提前检查了路径
+             logger.error(f"命令执行失败，找不到文件: {self.piper_exe_path}")
              return None
         except Exception as e:
             logger.error(f"Piper TTS 合成失败: {e}")
