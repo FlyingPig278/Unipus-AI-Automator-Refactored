@@ -54,7 +54,7 @@ class DriverService:
     async def login(self):
         """执行完整的登录流程，并导航到课程列表页面。"""
         logger.info("正在导航到登录页面...")
-        await self.page.goto(config.LOGIN_URL)
+        await self.page.goto(config.LOGIN_URL,timeout=30000)
         
         logger.info("正在勾选用户协议...")
         await self.page.get_by_role("checkbox", name="我已阅读并同意").check()
@@ -67,7 +67,7 @@ class DriverService:
         await self.page.get_by_role("button", name="登录").click()
         
         try:
-            await self.page.get_by_role("button", name="知道了").click(timeout=3000)
+            await self.page.get_by_role("button", name="知道了").click(timeout=10000)
             logger.info("已点击“知道了”弹窗。")
         except PlaywrightError:
             logger.info("未找到“知道了”弹窗，跳过。")
@@ -239,7 +239,7 @@ class DriverService:
             try:
                 # 使用重构后的健壮的点击方法
                 await self._click_unit_tab(unit_index)
-                await asyncio.sleep(0.3)  # 等待任务列表加载
+                await asyncio.sleep(0.5)  # 等待任务列表加载
     
                 active_area_locator = self.page.locator(config.ACTIVE_UNIT_AREA)
                 await active_area_locator.locator(config.TASK_ITEM_CONTAINER).first.wait_for()
@@ -348,15 +348,15 @@ class DriverService:
             # 找到对应单元下的所有任务未在本页找到可用的音频或视频文件。项
             task_elements_locators = self.page.locator(f"{config.ACTIVE_UNIT_AREA} {config.TASK_ITEM_CONTAINER}")
             # 点击第 task_index 个任务
-            await asyncio.sleep(0.3) # TODO:暂不明确应等待什么元素
+            await asyncio.sleep(0.5) # TODO:暂不明确应等待什么元素
             await task_elements_locators.nth(task_index).click()
             logger.info(f"已进入任务索引 {task_index} 的任务页面。")
 
             # 等待题目加载标记，针对服务器不稳定，增加等待时间
             try:
-                await self.page.wait_for_selector(config.QUESTION_LOADING_MARKER, timeout=20000)
+                await self.page.wait_for_selector(config.QUESTION_LOADING_MARKER, timeout=30000)
             except PlaywrightError:
-                logger.warning("任务页面加载后，未在20秒内找到题目加载标记。")
+                logger.warning("任务页面加载后，未在30秒内找到题目加载标记。")
 
             # 调用通用的弹窗处理器
             await self.handle_common_popups()
