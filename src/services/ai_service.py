@@ -32,8 +32,8 @@ class LocalTTSEngine:
         self.models_dir = Path(".models")
         self.models_dir.mkdir(exist_ok=True)
 
-        python_dir = Path(sys.executable).parent
-        self.piper_exe_path = python_dir / "piper.exe"
+        python_dir = Path(sys.prefix)
+        self.piper_exe_path = python_dir / "Scripts" / "piper.exe"
 
         self.model_path = self.models_dir / f"{self.model_name}.onnx"
         self.model_config_path = self.models_dir / f"{self.model_name}.onnx.json"
