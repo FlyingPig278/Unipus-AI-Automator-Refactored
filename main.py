@@ -324,9 +324,16 @@ async def run_manual_debug_mode(browser_service: DriverService, ai_service: AISe
 
 async def main():
    """程序主入口，提供模式选择。"""
+   # 启动前检查：确保关键环境变量已正确配置
    if not all([config.USERNAME, config.PASSWORD, config.DEEPSEEK_API_KEY]):
        logger.error("错误：请确保您已经从 .env.example 复制创建了 .env 文件，")
        logger.error("并在其中填写了您的 U_USERNAME, U_PASSWORD, 和 DEEPSEEK_API_KEY。")
+       return
+
+   default_values = {"你的U校园账号", "你的U校园密码", "你的DeepSeek API Key"}
+   if config.USERNAME in default_values or config.PASSWORD in default_values or config.DEEPSEEK_API_KEY in default_values:
+       logger.error("错误：检测到您仍在使用默认配置值。")
+       logger.error("请打开 .env 文件，并将 U_USERNAME, U_PASSWORD, 和 DEEPSEEK_API_KEY 替换为您的真实信息。")
        return
    
    config.IS_AUTO_MODE = False
