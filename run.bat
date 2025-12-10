@@ -88,8 +88,6 @@ if %errorlevel% neq 0 (
     echo [成功] 浏览器内核就绪。
 )
 
-set "ESPEAK_DATA_PATH=%~dp0.venv\Lib\site-packages\piper\espeak-ng-data"
-
 echo.
 echo =================================================================
 echo  环境准备完毕，正在启动...
