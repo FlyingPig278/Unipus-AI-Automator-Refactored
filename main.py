@@ -267,17 +267,23 @@ async def run_auto_mode(browser_service: DriverService, ai_service: AIService, c
    for i, name in enumerate(courses):
        logger.always_print(f"[{i + 1}] {name}")
 
-   choice = -1
-   while choice < 0 or choice >= len(courses):
-       try:
-           user_input = await asyncio.to_thread(input, f"请输入要进行的课程编号 (1-{len(courses)}): ")
-           choice = int(user_input) - 1
-           if choice < 0 or choice >= len(courses):
-               logger.warning("输入无效，请输入列表中的编号。")
-       except ValueError:
-           logger.warning("输入无效，请输入一个数字。")
+   selected_index = 0  # Default to the first course
+   if len(courses) > 1:
+       choice = -1
+       while choice < 0 or choice >= len(courses):
+           try:
+               user_input = await asyncio.to_thread(input, f"请输入要进行的课程编号 (1-{len(courses)}): ")
+               choice = int(user_input) - 1
+               if choice < 0 or choice >= len(courses):
+                   logger.warning("输入无效，请输入列表中的编号。")
+           except ValueError:
+               logger.warning("输入无效，请输入一个数字。")
+       selected_index = choice
+   else:
+       # If there's only one course, automatically select it
+       logger.info("检测到只有一门课程，已自动选择。")
 
-   await browser_service.select_course_by_index(choice)
+   await browser_service.select_course_by_index(selected_index)
 
    pending_tasks = await browser_service.get_pending_tasks()
 
