@@ -76,11 +76,11 @@ class LoggerAdapter:
 
     def warning(self, message: str):
         """记录警告信息。RichHandler 会自动将其着色为黄色。"""
-        _logger.warning(f"警告：{message}")
+        _logger.warning(f"{message}")
 
     def error(self, message: str):
         """记录错误信息。RichHandler 会自动将其着色为红色。"""
-        _logger.error(f"错误：{message}")
+        _logger.error(f"{message}")
     
     def success(self, message: str):
         """记录成功信息，使用 rich 的标记语法实现绿色文本。"""
