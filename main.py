@@ -1,5 +1,8 @@
 import asyncio
 import os
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent))
 import src.config as config
 from src.credentials_handler import handle_credentials
 from src.services.driver_service import DriverService, RateLimitException, InvalidCredentialsException

@@ -37,8 +37,63 @@ class LocalTTSEngine:
         python_dir = Path(sys.prefix)
         self.piper_exe_path = python_dir / "Scripts" / "piper.exe"
 
+        # 初始化模型路径
         self.model_path = self.models_dir / f"{self.model_name}.onnx"
         self.model_config_path = self.models_dir / f"{self.model_name}.onnx.json"
+
+        # 设置安全的 espeak-ng-data 路径
+        self.safe_espeak_path = self._setup_safe_espeak_data(python_dir)
+
+    def _setup_safe_espeak_data(self, python_dir: Path) -> str | None:
+        """
+        解决中文路径问题的核心方法：
+        将 espeak-ng-data 复制到系统的临时目录（通常是纯英文路径），
+        避开 C++ 程序无法读取包含中文/特殊字符路径的问题。
+        """
+        try:
+            # 1. 寻找原始的安装路径
+            original_path = python_dir / "Lib" / "site-packages" / "piper" / "espeak-ng-data"
+            
+            # 如果找不到，尝试遍历 site-packages (针对不同环境)
+            if not original_path.exists():
+                import site
+                for path in site.getsitepackages():
+                    potential = Path(path) / "piper" / "espeak-ng-data"
+                    if potential.exists():
+                        original_path = potential
+                        break
+            
+            if not original_path.exists():
+                logger.warning("未找到原始 espeak-ng-data 目录，跳过配置。")
+                return None
+
+            # 2. 设定一个安全的临时目标路径 (在 %TEMP% 下)
+            # 例如: C:\Users\flyin\AppData\Local\Temp\piper_espeak_safe_v1
+            temp_root = Path(tempfile.gettempdir())
+            safe_target = temp_root / "piper_espeak_safe_v1"
+
+            # 3. 检查是否需要复制
+            # 如果目标不存在，或者为空，则进行复制
+            if not safe_target.exists() or not any(safe_target.iterdir()):
+                logger.info(f"正在构建中文路径兼容环境...")
+                logger.info(f"源路径: {original_path}")
+                logger.info(f"目标安全路径: {safe_target}")
+                
+                # 如果存在残留但不完整，先清除
+                if safe_target.exists():
+                    shutil.rmtree(safe_target)
+                
+                # 复制文件夹
+                shutil.copytree(original_path, safe_target)
+                logger.success("已成功将 piper 数据文件迁移至安全路径。")
+            else:
+                logger.debug(f"安全数据路径已存在，直接使用: {safe_target}")
+
+            return str(safe_target)
+
+        except Exception as e:
+            logger.error(f"构建安全数据环境失败: {e}")
+            return None
 
     async def ensure_model_exists(self):
         """检查并自动下载所需的TTS模型。"""
@@ -219,10 +274,17 @@ class LocalTTSEngine:
             # 在Windows上，使用CREATE_NO_WINDOW标志来隐藏子进程的控制台窗口
             creation_flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             
+            # 注入指向安全路径的环境变量
+            env = os.environ.copy()
+            if self.safe_espeak_path:
+                env["ESPEAK_DATA_PATH"] = self.safe_espeak_path
+                logger.debug(f"已注入环境变量 ESPEAK_DATA_PATH: {self.safe_espeak_path}")
+
             process = await asyncio.create_subprocess_exec(
                 *piper_command,
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                creationflags=creation_flags
+                creationflags=creation_flags,
+                env=env # 传入修改后的环境
             )
             
             _, stderr = await process.communicate(clean_text.encode('utf-8'))
