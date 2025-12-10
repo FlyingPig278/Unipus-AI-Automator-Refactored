@@ -3,12 +3,14 @@ import asyncio
 import json
 import os
 import re
+import shutil
 import subprocess
+import sys
 import tempfile
 import unicodedata
 import uuid  # 新增导入
+import zipfile
 from pathlib import Path
-import sys
 import requests
 import whisper
 from openai import OpenAI
@@ -254,11 +256,11 @@ class AIService:
     """
     def __init__(self):
         """
-        初始化AI服务，加载Whisper模型、配置DeepSeek客户端和本地TTS引擎。
+        初始化AI服务。注意：这是一个同步构造函数，
+        异步组件的初始化请通过调用'create'工厂方法来完成。
         """
+        # 同步组件的初始化
         logger.info("正在加载Whisper模型...")
-        
-        # 忽略 whisper 库关于 FP16 在 CPU 上不受支持的警告
         warnings.filterwarnings("ignore", message="FP16 is not supported on CPU; using FP32 instead", category=UserWarning)
         self.whisper_model = whisper.load_model(config.WHISPER_MODEL)
         logger.info("Whisper模型加载完毕。")
@@ -270,6 +272,113 @@ class AIService:
         logger.info("正在初始化本地TTS引擎...")
         self.local_tts_engine = LocalTTSEngine()
         logger.info("本地TTS引擎初始化完毕。")
+
+    @classmethod
+    async def create(cls):
+        """
+        异步工厂方法，用于创建并完全初始化AIService实例。
+        """
+        instance = cls()
+        # 调用异步的初始化部分
+        await instance._check_and_configure_ffmpeg()
+        return instance
+
+    async def _check_and_configure_ffmpeg(self):
+        """
+        检查ffmpeg是否存在于当前Python环境中，如果不存在，则按需下载。
+        此方法统一处理标准虚拟环境和便携式环境。
+        """
+        logger.info("正在检查并配置FFmpeg...")
+        
+        # 目标目录为当前Python环境下的'bin'文件夹，具有通用性
+        # sys.prefix 在虚拟环境中指向 .venv 目录，在便携版中指向 python-embed 目录
+        try:
+            target_dir = Path(sys.prefix) / "bin"
+            target_dir.mkdir(exist_ok=True)
+            ffmpeg_exe_path = target_dir / "ffmpeg.exe"
+
+            if not ffmpeg_exe_path.exists():
+                logger.warning(f"在 '{target_dir}' 中未找到ffmpeg.exe，将尝试自动下载...")
+                await self._download_ffmpeg(ffmpeg_exe_path)
+            
+            if ffmpeg_exe_path.exists():
+                # 将ffmpeg所在的目录添加到PATH
+                os.environ["PATH"] = str(target_dir.resolve()) + os.pathsep + os.environ["PATH"]
+                # 最终验证
+                creation_flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+                subprocess.run(["ffmpeg", "-version"], check=True, capture_output=True, creationflags=creation_flags)
+                logger.success("FFmpeg 已为当前会话配置成功并通过验证。")
+            else:
+                raise FileNotFoundError("FFmpeg下载后校验失败，文件不存在。")
+
+        except Exception as e:
+            logger.error(f"FFmpeg 配置或下载过程中发生错误: {e}")
+            logger.error("语音识别功能将无法处理视频文件！请检查网络或尝试手动下载ffmpeg.exe。")
+
+    async def _download_ffmpeg(self, target_path: Path):
+        """
+        从国内友好的镜像源下载并解压ffmpeg.exe，包含中断安全机制。
+        """
+        # 使用gh-proxy.com作为GitHub的国内加速代理
+        ffmpeg_zip_url = "https://gh-proxy.com/https://github.com/GyanD/codexffmpeg/releases/download/6.0/ffmpeg-6.0-essentials_build.zip"
+        
+        temp_dir = Path(tempfile.gettempdir()) / f"ffmpeg_dl_{uuid.uuid4().hex}"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        ffmpeg_zip_path = temp_dir / "ffmpeg.zip"
+
+        try:
+            progress = Progress(
+                TextColumn("[bold blue]{task.fields[filename]}", justify="right"),
+                BarColumn(bar_width=None),
+                "[progress.percentage]{task.percentage:>3.1f}%", "•",
+                DownloadColumn(), "•", TransferSpeedColumn(),
+            )
+            
+            def download_job():
+                """下载任务，包含中断安全机制。"""
+                zip_part_path = ffmpeg_zip_path.with_suffix('.zip.part')
+                task_id = progress.add_task("download", filename="ffmpeg-essentials.zip", start=False)
+                
+                try:
+                    response = requests.get(ffmpeg_zip_url, stream=True, timeout=120) # 增加超时时间
+                    response.raise_for_status()
+                    total_size = int(response.headers.get('content-length', 0))
+                    progress.start_task(task_id)
+                    progress.update(task_id, total=total_size)
+                    
+                    with open(zip_part_path, 'wb') as f:
+                        for chunk in response.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                            progress.update(task_id, advance=len(chunk))
+                    
+                    zip_part_path.rename(ffmpeg_zip_path) # 下载成功后，将.part文件重命名为最终文件
+                except requests.RequestException as e:
+                    if zip_part_path.exists():
+                        zip_part_path.unlink() # 如果发生网络错误，清理.part文件
+                    raise e
+                finally:
+                    progress.stop_task(task_id)
+                    progress.update(task_id, visible=False)
+
+            with progress:
+                logger.info(f"正在从国内镜像源下载 FFmpeg...")
+                await asyncio.to_thread(download_job)
+
+            logger.info("下载完成，正在解压以提取 ffmpeg.exe...")
+            with zipfile.ZipFile(ffmpeg_zip_path, 'r') as zip_ref:
+                ffmpeg_info = next((member for member in zip_ref.infolist() if member.filename.endswith('/bin/ffmpeg.exe')), None)
+                
+                if ffmpeg_info:
+                    # 直接将找到的ffmpeg.exe解压到目标路径
+                    with zip_ref.open(ffmpeg_info) as source, open(target_path, 'wb') as target:
+                        shutil.copyfileobj(source, target)
+                    logger.success(f"FFmpeg 已成功部署到: {target_path}")
+                else:
+                    raise FileNotFoundError("在下载的压缩包中未能找到 'bin/ffmpeg.exe'。")
+        finally:
+            if temp_dir.exists():
+                shutil.rmtree(temp_dir)
+                logger.debug("已清理FFmpeg下载产生的临时文件。")
 
     async def text_to_wav(self, text: str, length_scale: float = 1.0, noise_scale: float = 0.667, noise_w: float = 0.8) -> str | None:
         """

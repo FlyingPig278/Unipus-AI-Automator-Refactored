@@ -342,7 +342,7 @@ async def main():
    browser_service = DriverService()
    try:
        await browser_service.start(headless=False)
-       ai_service = AIService()
+       ai_service = await AIService.create()
        cache_service = CacheService()
        await browser_service.login()
 
