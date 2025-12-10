@@ -15,6 +15,11 @@ class RateLimitException(Exception):
     pass
 
 
+class InvalidCredentialsException(Exception):
+    """自定义异常，在检测到用户名或密码错误时抛出。"""
+    pass
+
+
 class DriverService:
     """服务类，用于封装所有Playwright浏览器操作。"""
 
@@ -52,9 +57,23 @@ class DriverService:
         logger.info("浏览器已关闭。")
 
     async def login(self):
-        """执行完整的登录流程，并导航到课程列表页面。"""
+        """
+        执行完整的登录流程，处理凭据、验证码和各种登录后状态。
+        """
+        logger.info("正在开始登录流程...")
+        await self._navigate_and_fill_form()
+        
+        # 首次点击登录
+        await self.page.get_by_role("button", name="登录").click()
+        logger.info("已点击登录，正在判断响应结果...")
+
+        await self._handle_initial_login_response()
+        logger.info("登录流程成功结束。")
+
+    async def _navigate_and_fill_form(self):
+        """导航到登录页并填写表单。"""
         logger.info("正在导航到登录页面...")
-        await self.page.goto(config.LOGIN_URL,timeout=30000)
+        await self.page.goto(config.LOGIN_URL, timeout=60000)
         
         logger.info("正在勾选用户协议...")
         await self.page.get_by_role("checkbox", name="我已阅读并同意").check()
@@ -62,25 +81,98 @@ class DriverService:
         logger.info("正在输入凭据...")
         await self.page.get_by_role("textbox", name="手机号/邮箱/用户名").fill(config.USERNAME)
         await self.page.get_by_role("textbox", name="密码").fill(config.PASSWORD)
-        
-        logger.info("正在点击登录按钮...")
-        await self.page.get_by_role("button", name="登录").click()
-        
+
+    async def _handle_initial_login_response(self):
+        """
+        处理首次登录点击后的响应，通过并行等待任务来区分验证码、成功或失败。
+        这种方法可以避免 Playwright 的 strict mode violation。
+        """
+        logger.info("正在等待登录响应 (验证码、成功或失败)...")
+
+        # 为每个可能的结果创建一个独立的等待任务
+        tasks = [
+            asyncio.create_task(self.page.locator("#pw-captchaCode").wait_for(state="visible", timeout=20000), name="captcha"),
+            asyncio.create_task(self.page.locator("a:has-text('我的课程')").wait_for(state="visible", timeout=20000), name="success_page"),
+            asyncio.create_task(self.page.get_by_role("button", name="知道了").wait_for(state="visible", timeout=20000), name="success_popup"),
+            asyncio.create_task(self.page.locator(".layui-layer-dialog .layui-layer-content:has-text('用户名或者密码错误')").wait_for(state="visible", timeout=20000), name="failure")
+        ]
+
         try:
-            await self.page.get_by_role("button", name="知道了").click(timeout=10000)
-            logger.info("已点击“知道了”弹窗。")
+            # 等待第一个任务完成
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            # 无论结果如何，取消所有仍在运行的任务，避免后台继续执行
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+
+        # 检查完成的任务并处理结果
+        for task in done:
+            task_name = task.get_name()
+            # 检查任务是否因异常（如超时）而结束
+            if task.exception():
+                # 如果是超时，Playwright 会抛出 TimeoutError。我们将在最后统一处理。
+                logger.debug(f"任务 '{task_name}' 因异常而结束: {task.exception()}")
+                continue
+
+            # 根据成功完成的任务名称来决定下一步
+            if task_name == "captcha":
+                await self._handle_captcha_flow()
+                return
+            elif task_name == "failure":
+                logger.error("登录失败：用户名或密码错误。")
+                raise InvalidCredentialsException("用户名或密码错误")
+            elif task_name in ["success_page", "success_popup"]:
+                logger.info("直接登录成功。")
+                await self._finalize_login()
+                return
+
+        # 如果所有完成的任务都以异常结束（通常是超时），则认为登录超时
+        logger.error("登录超时：20秒内未收到服务器的初始响应（成功、失败或验证码）。")
+        raise PlaywrightError("登录超时：20秒内未收到服务器的初始响应。")
+
+    async def _handle_captcha_flow(self):
+        """处理检测到验证码后的手动登录流程。"""
+        logger.always_print("="*50)
+        logger.always_print("检测到登录验证码！")
+        logger.always_print("请在浏览器中手动输入验证码，并点击【登录】按钮。")
+        logger.always_print("程序将等待您手动登录的结果（5分钟超时）...")
+        logger.always_print("="*50)
+
+        # 定义手动登录后的成功与失败状态
+        success_indicator = self.page.get_by_role("button", name="知道了")
+        failure_indicator = self.page.locator(".layui-layer-dialog .layui-layer-content:has-text('用户名或者密码错误')")
+        
+        final_outcome_locator = success_indicator.or_(failure_indicator)
+
+        try:
+            await final_outcome_locator.wait_for(state="visible", timeout=300000)
+        except PlaywrightError:
+            logger.error("登录超时：5分钟内未检测到您手动登录后的成功或失败结果。")
+            raise
+
+        if await failure_indicator.is_visible():
+            logger.error("手动登录失败：用户名或密码错误。")
+            raise InvalidCredentialsException("用户名或密码错误")
+        else:  # 成功
+            logger.info("手动登录成功。")
+            await self._finalize_login()
+
+    async def _finalize_login(self):
+        """统一处理登录成功后的收尾工作，如关闭弹窗和页面导航。"""
+        try:
+            # 尝试点击“知道了”弹窗
+            await self.page.get_by_role("button", name="知道了").click(timeout=5000)
+            logger.info("已关闭“知道了”弹窗。")
         except PlaywrightError:
             logger.info("未找到“知道了”弹窗，跳过。")
 
-        logger.info("等待主页面加载...")
         try:
             await self.page.get_by_text("我的课程").click()
             logger.info("已点击“我的课程”。")
         except PlaywrightError:
             logger.error("登录后未找到“我的课程”按钮，无法继续。")
             raise
-            
-        logger.info("登录流程完毕。")
 
     async def get_course_list(self) -> list[str]:
         """获取“我的课程”页面上的所有课程名称。"""

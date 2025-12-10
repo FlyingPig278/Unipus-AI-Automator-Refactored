@@ -1,7 +1,8 @@
 import asyncio
+import os
 import src.config as config
 from src.credentials_handler import handle_credentials
-from src.services.driver_service import DriverService, RateLimitException
+from src.services.driver_service import DriverService, RateLimitException, InvalidCredentialsException
 from src.services.ai_service import AIService
 from src.services.cache_service import CacheService
 from src.utils import logger, console
@@ -369,6 +370,16 @@ async def main():
 
        logger.always_print("程序已结束。")
 
+   except InvalidCredentialsException:
+       logger.error("登录失败：提供的U校园账号或密码不正确。")
+       logger.info("为了让您下次可以输入正确的凭据，程序将删除已保存的 .env 文件。")
+       try:
+           if os.path.exists(".env"):
+               os.remove(".env")
+               logger.success(".env 文件已删除。请重新运行程序以输入正确的凭据。")
+       except OSError as e:
+           logger.error(f"删除 .env 文件失败: {e}")
+           logger.error("请手动删除 .env 文件后，再重新运行程序。")
    except RateLimitException:
        logger.error("程序因操作过于频繁被服务器限制，已自动终止。")
        logger.warning("请等待几分钟后，再重新运行本程序。")
