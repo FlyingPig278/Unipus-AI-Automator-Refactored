@@ -21,7 +21,7 @@ class DiscussionStrategy(BaseStrategy):
     async def check(driver_service: DriverService) -> bool:
         """检查当前页面是否为讨论区任务。"""
         try:
-            is_visible = await driver_service.page.locator(".discussion-cloud-reply").first.is_visible(timeout=2000)
+            is_visible = await driver_service.page.locator(".discussion-view").first.is_visible(timeout=2000)
             if is_visible:
                 logger.info("检测到讨论区，应用讨论题策略。")
                 return True
