@@ -1,6 +1,7 @@
 from playwright.async_api import Error as PlaywrightError
 from src.services.ai_service import AIService
 from src.services.cache_service import CacheService
+from src.services.diagnostic_service import DiagnosticService
 from src.services.driver_service import DriverService
 from src.strategies.base_strategy import BaseStrategy
 from src.utils import logger
@@ -92,10 +93,20 @@ class NoReplyStrategy(BaseStrategy):
                 const dummyController = new mod.Xf();
                 const AnswerManager = dummyController._courseAnswerManager;
                 const PageManager = dummyController._pageManger;
+                const answerManagerKeys = AnswerManager ? Object.keys(AnswerManager) : [];
 
                 if (!PageManager) {
                     console.error("❌ 无法获取 PageManager (页面管理器)。");
                     return { success: false, message: "无法获取 PageManager" };
+                }
+
+                if (!AnswerManager) {
+                    console.error("❌ 无法获取 AnswerManager (答案管理器)。");
+                    return {
+                        success: false,
+                        message: "无法获取 AnswerManager",
+                        answerManagerKeys
+                    };
                 }
 
                 // 4. [核心] 直接询问 APP：当前是哪一页？
@@ -125,6 +136,26 @@ class NoReplyStrategy(BaseStrategy):
                 console.log(`🎯 准备提交以下任务 ID:`, targetIds);
 
                 // 6. 执行提交
+                const submitCandidates = [
+                    "_submitDebounce",
+                    "_submit",
+                    "submit",
+                    "submitAnswer",
+                    "submitQues",
+                    "submitQuestion"
+                ];
+                const availableSubmitMethods = submitCandidates.filter(
+                    (name) => typeof AnswerManager[name] === "function"
+                );
+
+                if (availableSubmitMethods.length === 0) {
+                    return {
+                        success: false,
+                        message: "AnswerManager中未找到可用提交函数",
+                        answerManagerKeys
+                    };
+                }
+
                 for (const qid of targetIds) {
                     console.log(`⚡️ [${qid}] 正在提交...`);
                     
@@ -139,22 +170,39 @@ class NoReplyStrategy(BaseStrategy):
                         version: "default"
                     };
 
-                    try {
-                        await AnswerManager._submitDebounce(payload);
-                        console.log(`✅ [${qid}] 请求已发送`);
-                    } catch (e) {
-                        if (e && (e.message.includes("Unexpected") || e.name === 'SyntaxError')) {
-                            console.log(`✅ [${qid}] 提交成功 (服务器返回了空响应)`);
-                        } else {
-                            console.error(`❌ [${qid}] 提交异常:`, e);
+                    let submitted = false;
+                    let lastSubmitError = "";
+                    for (const methodName of availableSubmitMethods) {
+                        try {
+                            await AnswerManager[methodName].call(AnswerManager, payload);
+                            console.log(`✅ [${qid}] 通过 ${methodName} 请求已发送`);
+                            submitted = true;
+                            break;
+                        } catch (e) {
+                            if (e && (String(e.message || "").includes("Unexpected") || e.name === 'SyntaxError')) {
+                                console.log(`✅ [${qid}] 通过 ${methodName} 提交成功 (服务器返回了空响应)`);
+                                submitted = true;
+                                break;
+                            }
+                            lastSubmitError = e && e.message ? e.message : String(e);
+                            console.error(`❌ [${qid}] 通过 ${methodName} 提交异常:`, e);
                         }
+                    }
+
+                    if (!submitted) {
+                        return {
+                            success: false,
+                            message: `所有候选提交函数均失败: ${lastSubmitError}`,
+                            answerManagerKeys,
+                            availableSubmitMethods
+                        };
                     }
                     
                     await new Promise(r => setTimeout(r, 500));
                 }
 
                 console.log("%c🏁 执行结束！请刷新页面查看进度。", "color: red; font-weight: bold;");
-                return { success: true, message: "执行成功" };
+                return { success: true, message: "执行成功", availableSubmitMethods };
 
             } catch (err) {
                 console.error("❌ 执行精准提交脚本时发生意外错误:", err);
@@ -171,9 +219,27 @@ class NoReplyStrategy(BaseStrategy):
             else:
                 error_message = result.get('message') if result else '未知JS执行错误'
                 logger.error(f"执行JS提交脚本失败: {error_message}")
+                await DiagnosticService.capture_page_failure(
+                    self.driver_service,
+                    "no_reply_js_submit_failed",
+                    context={
+                        "strategy": self.__class__.__name__,
+                        "js_result": result,
+                    },
+                )
+                self.diagnostic_already_captured = True
                 return False, False
         except Exception as e:
             logger.error(f"调用JS脚本时发生Playwright错误: {e}")
+            await DiagnosticService.capture_page_failure(
+                self.driver_service,
+                "no_reply_js_playwright_error",
+                e,
+                {
+                    "strategy": self.__class__.__name__,
+                },
+            )
+            self.diagnostic_already_captured = True
             return False, False
     async def close(self) -> None:
         pass

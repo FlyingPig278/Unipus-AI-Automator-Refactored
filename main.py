@@ -158,7 +158,7 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
             
             if current_strategy:
                 succeeded, _ = await current_strategy.execute(is_chained_task=False)
-                if not succeeded:
+                if not succeeded and not getattr(current_strategy, "diagnostic_already_captured", False):
                     await DiagnosticService.capture_page_failure(
                         browser_service,
                         "strategy_returned_failed",
@@ -208,15 +208,16 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
                             tasks_to_cache.append({'index': sub_task_index, 'type': current_strategy_instance.strategy_type})
                         if not succeeded:
                             logger.warning(f"策略 {current_strategy_instance.__class__.__name__} 执行提前终止，任务链中断。")
-                            await DiagnosticService.capture_page_failure(
-                                browser_service,
-                                "strategy_returned_failed",
-                                context={
-                                    "strategy": current_strategy_instance.__class__.__name__,
-                                    "mode": "chained_task",
-                                    "sub_task_index": sub_task_index,
-                                },
-                            )
+                            if not getattr(current_strategy_instance, "diagnostic_already_captured", False):
+                                await DiagnosticService.capture_page_failure(
+                                    browser_service,
+                                    "strategy_returned_failed",
+                                    context={
+                                        "strategy": current_strategy_instance.__class__.__name__,
+                                        "mode": "chained_task",
+                                        "sub_task_index": sub_task_index,
+                                    },
+                                )
                             break 
                     except RateLimitException:
                         raise
@@ -275,7 +276,7 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
                 if isinstance(current_strategy, (RolePlayStrategy, DiscussionStrategy)):
                     logger.info(f"检测到 {current_strategy.__class__.__name__}，强制以非链式任务模式(is_chained_task=False)执行。")
                     succeeded, _ = await current_strategy.execute(is_chained_task=False)
-                    if not succeeded:
+                    if not succeeded and not getattr(current_strategy, "diagnostic_already_captured", False):
                         await DiagnosticService.capture_page_failure(
                             browser_service,
                             "strategy_returned_failed",
@@ -287,7 +288,7 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
                 # 在快速缓存模式下，不执行NoReply等非缓存策略
                 elif not config.FAST_CACHE_MODE:
                      succeeded, _ = await current_strategy.execute(is_chained_task=True)
-                     if not succeeded:
+                     if not succeeded and not getattr(current_strategy, "diagnostic_already_captured", False):
                          await DiagnosticService.capture_page_failure(
                              browser_service,
                              "strategy_returned_failed",
