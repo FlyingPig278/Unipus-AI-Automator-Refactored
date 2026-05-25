@@ -9,6 +9,7 @@ from src.services.driver_service import DriverService, RateLimitException, Inval
 from src.services.ai_service import AIService
 from src.services.cache_service import CacheService
 from src.services.diagnostic_service import DiagnosticService
+from src.services.task_progress_service import TaskProgressService
 from src.utils import logger, console
 from src.strategies.checkbox_strategy import CheckboxStrategy
 from src.strategies.single_choice import SingleChoiceStrategy
@@ -199,6 +200,8 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
                         if not succeeded:
                             logger.warning(f"策略 {current_strategy_instance.__class__.__name__} 执行提前终止，任务链中断。")
                             break 
+                    except RateLimitException:
+                        raise
                     except Exception as e:
                         logger.error(f"策略 {current_strategy_instance.__class__.__name__} 执行时发生错误，终止当前任务链: {e}")
                         await DiagnosticService.capture_page_failure(
@@ -263,6 +266,8 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
             else:
                 logger.info("未找到任何适用策略，此页面可能为纯信息页。继续下一个任务。")
 
+    except RateLimitException:
+        raise
     except Exception as e:
         logger.error(f"执行策略期间发生错误: {e}")
         await DiagnosticService.capture_page_failure(
@@ -302,8 +307,24 @@ async def run_auto_mode(browser_service: DriverService, ai_service: AIService, c
        logger.info("检测到只有一门课程，已自动选择。")
 
    await browser_service.select_course_by_index(selected_index)
+   selected_course_name = courses[selected_index]
+   current_course_url = browser_service.page.url
+   task_progress_service = TaskProgressService(config.TASK_QUEUE_CACHE_FILE)
 
-   pending_tasks = await browser_service.get_pending_tasks()
+   course_record = task_progress_service.get_course_record(config.USERNAME, selected_course_name)
+   if course_record and not config.REFRESH_TASK_QUEUE:
+       pending_tasks = course_record.get("queue", [])
+       pending_tasks = task_progress_service.refresh_course_url(pending_tasks, current_course_url)
+       task_progress_service.save_queue(config.USERNAME, selected_course_name, pending_tasks)
+       logger.always_print(
+           f"已从任务队列缓存恢复课程进度：{selected_course_name}，剩余 {len(pending_tasks)} 个任务。"
+       )
+   else:
+       if config.REFRESH_TASK_QUEUE:
+           logger.info("REFRESH_TASK_QUEUE=True，将重新扫描课程任务并刷新断点队列。")
+       pending_tasks = await browser_service.get_pending_tasks()
+       pending_tasks = task_progress_service.refresh_course_url(pending_tasks, current_course_url)
+       task_progress_service.save_queue(config.USERNAME, selected_course_name, pending_tasks)
 
    if not pending_tasks:
        logger.always_print("在本课程未找到任何待完成的任务。")
@@ -329,6 +350,7 @@ async def run_auto_mode(browser_service: DriverService, ai_service: AIService, c
                    await browser_service.navigate_to_task(task['course_url'], task['unit_index'], task['task_index'])
                    await run_strategy_on_current_page(browser_service, ai_service, cache_service)
                    await asyncio.sleep(2)
+                   task_progress_service.mark_task_finished(config.USERNAME, selected_course_name, task)
                except RateLimitException:
                    raise
                except Exception as e:
@@ -344,6 +366,7 @@ async def run_auto_mode(browser_service: DriverService, ai_service: AIService, c
                            "task_index": task.get("task_index"),
                        },
                    )
+                   task_progress_service.mark_task_finished(config.USERNAME, selected_course_name, task)
 
        logger.always_print("所有待完成任务处理完毕！")
 

@@ -34,6 +34,10 @@ FAST_CACHE_MODE = False  # 新增：快速缓存模式开关
 DIAGNOSTICS_ENABLED = os.getenv("DIAGNOSTICS_ENABLED", "True").lower() == 'true'
 DIAGNOSTICS_DIR = os.getenv("DIAGNOSTICS_DIR", ".diagnostics")
 
+# --- Resume / task queue cache ---
+REFRESH_TASK_QUEUE = os.getenv("REFRESH_TASK_QUEUE", "False").lower() == 'true'
+TASK_QUEUE_CACHE_FILE = os.getenv("TASK_QUEUE_CACHE_FILE", ".runtime/task_queues.json")
+
 # --- CSS Selectors ---
 # Course Page
 UNIT_TABS = "[data-index]"
