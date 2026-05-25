@@ -41,6 +41,8 @@ rsync_args=(
   --exclude "__pycache__/"
   --exclude "*.pyc"
   --exclude ".logs/"
+  --exclude ".diagnostics/"
+  --exclude ".diagnose/"
   --exclude ".models/"
   --exclude ".runtime/"
   --exclude ".playwright-browsers/"
