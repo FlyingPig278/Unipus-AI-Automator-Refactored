@@ -157,7 +157,16 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
                     break
             
             if current_strategy:
-                await current_strategy.execute(is_chained_task=False)
+                succeeded, _ = await current_strategy.execute(is_chained_task=False)
+                if not succeeded:
+                    await DiagnosticService.capture_page_failure(
+                        browser_service,
+                        "strategy_returned_failed",
+                        context={
+                            "strategy": current_strategy.__class__.__name__,
+                            "mode": "single_page",
+                        },
+                    )
             else:
                 logger.warning("在当前页面未找到适合的策略。")
             
@@ -199,6 +208,15 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
                             tasks_to_cache.append({'index': sub_task_index, 'type': current_strategy_instance.strategy_type})
                         if not succeeded:
                             logger.warning(f"策略 {current_strategy_instance.__class__.__name__} 执行提前终止，任务链中断。")
+                            await DiagnosticService.capture_page_failure(
+                                browser_service,
+                                "strategy_returned_failed",
+                                context={
+                                    "strategy": current_strategy_instance.__class__.__name__,
+                                    "mode": "chained_task",
+                                    "sub_task_index": sub_task_index,
+                                },
+                            )
                             break 
                     except RateLimitException:
                         raise
@@ -256,10 +274,28 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
             if current_strategy:
                 if isinstance(current_strategy, (RolePlayStrategy, DiscussionStrategy)):
                     logger.info(f"检测到 {current_strategy.__class__.__name__}，强制以非链式任务模式(is_chained_task=False)执行。")
-                    await current_strategy.execute(is_chained_task=False)
+                    succeeded, _ = await current_strategy.execute(is_chained_task=False)
+                    if not succeeded:
+                        await DiagnosticService.capture_page_failure(
+                            browser_service,
+                            "strategy_returned_failed",
+                            context={
+                                "strategy": current_strategy.__class__.__name__,
+                                "mode": "no_action_button",
+                            },
+                        )
                 # 在快速缓存模式下，不执行NoReply等非缓存策略
                 elif not config.FAST_CACHE_MODE:
-                     await current_strategy.execute(is_chained_task=True)
+                     succeeded, _ = await current_strategy.execute(is_chained_task=True)
+                     if not succeeded:
+                         await DiagnosticService.capture_page_failure(
+                             browser_service,
+                             "strategy_returned_failed",
+                             context={
+                                 "strategy": current_strategy.__class__.__name__,
+                                 "mode": "no_action_button_chained",
+                             },
+                         )
                 else:
                     logger.info(f"快速缓存模式：跳过非缓存策略 {current_strategy.__class__.__name__}。")
 
