@@ -8,6 +8,7 @@ from src.credentials_handler import handle_credentials
 from src.services.driver_service import DriverService, RateLimitException, InvalidCredentialsException
 from src.services.ai_service import AIService
 from src.services.cache_service import CacheService
+from src.services.diagnostic_service import DiagnosticService
 from src.utils import logger, console
 from src.strategies.checkbox_strategy import CheckboxStrategy
 from src.strategies.single_choice import SingleChoiceStrategy
@@ -200,6 +201,15 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
                             break 
                     except Exception as e:
                         logger.error(f"策略 {current_strategy_instance.__class__.__name__} 执行时发生错误，终止当前任务链: {e}")
+                        await DiagnosticService.capture_page_failure(
+                            browser_service,
+                            "strategy_execute_failed",
+                            e,
+                            {
+                                "strategy": current_strategy_instance.__class__.__name__,
+                                "sub_task_index": sub_task_index,
+                            },
+                        )
                         break
                 else:
                     logger.info("当前子题未匹配到任何策略，尝试提取材料作为共享上下文...")
@@ -255,6 +265,11 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
 
     except Exception as e:
         logger.error(f"执行策略期间发生错误: {e}")
+        await DiagnosticService.capture_page_failure(
+            browser_service,
+            "strategy_dispatch_failed",
+            e,
+        )
 
 async def run_auto_mode(browser_service: DriverService, ai_service: AIService, cache_service: CacheService):
    """运行全自动答题模式。"""
@@ -310,9 +325,25 @@ async def run_auto_mode(browser_service: DriverService, ai_service: AIService, c
            for task in progress.track(pending_tasks, description="正在处理课程任务..."):
                # 使用 progress.log 在进度条上方打印状态信息，避免冲突
                progress.log(f"处理中: [单元 {task['unit_name']}] - {task['task_name']}")
-               await browser_service.navigate_to_task(task['course_url'], task['unit_index'], task['task_index'])
-               await run_strategy_on_current_page(browser_service, ai_service, cache_service)
-               await asyncio.sleep(2)
+               try:
+                   await browser_service.navigate_to_task(task['course_url'], task['unit_index'], task['task_index'])
+                   await run_strategy_on_current_page(browser_service, ai_service, cache_service)
+                   await asyncio.sleep(2)
+               except RateLimitException:
+                   raise
+               except Exception as e:
+                   logger.error(f"处理任务失败，已跳过当前任务: {e}")
+                   await DiagnosticService.capture_page_failure(
+                       browser_service,
+                       "auto_task_failed",
+                       e,
+                       {
+                           "unit_name": task.get("unit_name"),
+                           "task_name": task.get("task_name"),
+                           "unit_index": task.get("unit_index"),
+                           "task_index": task.get("task_index"),
+                       },
+                   )
 
        logger.always_print("所有待完成任务处理完毕！")
 
@@ -394,6 +425,11 @@ async def main():
        logger.warning("请等待几分钟后，再重新运行本程序。")
    except Exception as e:
        logger.error(f"程序运行期间发生致命错误: {e}")
+       await DiagnosticService.capture_page_failure(
+           browser_service,
+           "fatal_error",
+           e,
+       )
    finally:
        if browser_service:
            logger.always_print("正在关闭浏览器...")

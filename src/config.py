@@ -30,6 +30,10 @@ IS_AUTO_MODE = False # 标记当前是否处于全自动模式
 HAS_FETCHED_REMOTE_ARTICLE = False # 用于处理语音简答题在“题中题”模式下的特殊状态，防止无限循环
 FAST_CACHE_MODE = False  # 新增：快速缓存模式开关
 
+# --- Diagnostics ---
+DIAGNOSTICS_ENABLED = os.getenv("DIAGNOSTICS_ENABLED", "True").lower() == 'true'
+DIAGNOSTICS_DIR = os.getenv("DIAGNOSTICS_DIR", ".diagnostics")
+
 # --- CSS Selectors ---
 # Course Page
 UNIT_TABS = "[data-index]"
