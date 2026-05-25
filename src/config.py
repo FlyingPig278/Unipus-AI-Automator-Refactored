@@ -34,6 +34,12 @@ FAST_CACHE_MODE = False  # 新增：快速缓存模式开关
 DIAGNOSTICS_ENABLED = os.getenv("DIAGNOSTICS_ENABLED", "True").lower() == 'true'
 DIAGNOSTICS_DIR = os.getenv("DIAGNOSTICS_DIR", ".diagnostics")
 
+# --- Browser media / microphone ---
+# 语音题的 WebSocket 劫持仍依赖页面先成功创建录音流。没有实体麦克风时，
+# Chromium 假设备和页面级兜底流可以让录音链路继续产生二进制音频包。
+USE_FAKE_MICROPHONE = os.getenv("USE_FAKE_MICROPHONE", "True").lower() == 'true'
+MOCK_MICROPHONE_WHEN_MISSING = os.getenv("MOCK_MICROPHONE_WHEN_MISSING", "True").lower() == 'true'
+
 # --- Resume / task queue cache ---
 REFRESH_TASK_QUEUE = os.getenv("REFRESH_TASK_QUEUE", "False").lower() == 'true'
 TASK_QUEUE_CACHE_FILE = os.getenv("TASK_QUEUE_CACHE_FILE", ".runtime/task_queues.json")

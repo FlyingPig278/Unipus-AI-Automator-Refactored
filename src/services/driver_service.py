@@ -4,7 +4,7 @@ import html
 import json  # 新增导入
 import urllib.parse  # 新增导入
 
-from playwright.async_api import async_playwright, Playwright, Browser, Page, Locator, Error as PlaywrightError
+from playwright.async_api import async_playwright, Playwright, Browser, BrowserContext, Page, Locator, Error as PlaywrightError
 
 import src.config as config  # 导入我们的配置
 from src.utils import logger
@@ -27,6 +27,7 @@ class DriverService:
         """初始化DriverService，设置基本属性。"""
         self.playwright: Playwright | None = None
         self.browser: Browser | None = None
+        self.context: BrowserContext | None = None
         self.page: Page | None = None
         logger.info("Playwright驱动服务已初始化（尚未启动）。")
 
@@ -34,14 +35,140 @@ class DriverService:
         """启动Playwright，并创建一个新的浏览器页面。"""
         logger.info("正在启动Playwright浏览器...")
         self.playwright = await async_playwright().start()
-        self.browser = await self.playwright.chromium.launch(headless=headless)
+        launch_args = []
+        if config.USE_FAKE_MICROPHONE:
+            launch_args.extend([
+                "--use-fake-ui-for-media-stream",
+                "--use-fake-device-for-media-stream",
+            ])
+            logger.info("已启用Chromium假麦克风设备，用于无实体麦克风环境。")
+
+        self.browser = await self.playwright.chromium.launch(headless=headless, args=launch_args)
         # 在创建上下文时直接授予麦克风权限
-        context = await self.browser.new_context(permissions=['microphone'])
+        self.context = await self.browser.new_context(permissions=['microphone'])
+        if config.MOCK_MICROPHONE_WHEN_MISSING:
+            await self.context.add_init_script(self._build_microphone_fallback_script())
+            logger.info("已安装页面级麦克风兜底脚本。")
         # await context.tracing.start(screenshots=True, snapshots=True, sources=True)
-        self.page = await context.new_page()
+        self.page = await self.context.new_page()
         # self.page = await self.browser.new_page()
         self.page.set_default_timeout(30000) # 设置30秒默认超时
         logger.info("Playwright浏览器和新页面已成功启动。")
+
+    @staticmethod
+    def _build_microphone_fallback_script() -> str:
+        """
+        为无输入设备或 getUserMedia 报 NotFoundError 的环境提供一个页面内音频流。
+
+        Chromium 的 --use-fake-device-for-media-stream 通常已经足够；这个脚本负责兜住
+        WSL、远程桌面或浏览器音频后端异常时页面直接判定“没有麦克风”的情况。
+        """
+        return """
+        (() => {
+            if (window.__aiMicrophoneFallbackInstalled) return;
+            window.__aiMicrophoneFallbackInstalled = true;
+
+            const mediaDevices = navigator.mediaDevices || {};
+            const originalGetUserMedia = mediaDevices.getUserMedia
+                ? mediaDevices.getUserMedia.bind(mediaDevices)
+                : null;
+            const originalEnumerateDevices = mediaDevices.enumerateDevices
+                ? mediaDevices.enumerateDevices.bind(mediaDevices)
+                : null;
+
+            const needsAudio = (constraints) => {
+                if (!constraints) return false;
+                return constraints.audio === true || typeof constraints.audio === 'object';
+            };
+
+            const createFallbackStream = () => {
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContextClass) {
+                    const error = new Error('AudioContext is not available for microphone fallback.');
+                    error.name = 'NotFoundError';
+                    throw error;
+                }
+
+                const audioContext = new AudioContextClass();
+                const oscillator = audioContext.createOscillator();
+                const gain = audioContext.createGain();
+                const destination = audioContext.createMediaStreamDestination();
+
+                oscillator.frequency.value = 440;
+                gain.gain.value = 0.02;
+                oscillator.connect(gain);
+                gain.connect(destination);
+                oscillator.start();
+
+                const stream = destination.stream;
+                stream.__aiMockMicrophone = { audioContext, oscillator, gain };
+                const cleanup = () => {
+                    try { oscillator.stop(); } catch (_) {}
+                    try { audioContext.close(); } catch (_) {}
+                };
+                stream.getAudioTracks().forEach((track) => {
+                    const originalStop = track.stop.bind(track);
+                    try {
+                        track.stop = () => {
+                            originalStop();
+                            cleanup();
+                        };
+                    } catch (_) {}
+                    try {
+                        Object.defineProperty(track, 'label', {
+                            configurable: true,
+                            get: () => 'AI Virtual Microphone'
+                        });
+                    } catch (_) {}
+                });
+                return stream;
+            };
+
+            Object.defineProperty(navigator, 'mediaDevices', {
+                configurable: true,
+                value: {
+                    ...mediaDevices,
+                    async enumerateDevices() {
+                        const devices = originalEnumerateDevices ? await originalEnumerateDevices() : [];
+                        if (devices.some((device) => device.kind === 'audioinput')) return devices;
+                        return [
+                            ...devices,
+                            {
+                                deviceId: 'ai-virtual-microphone',
+                                groupId: 'ai-virtual-media',
+                                kind: 'audioinput',
+                                label: 'AI Virtual Microphone',
+                                toJSON() {
+                                    return {
+                                        deviceId: this.deviceId,
+                                        groupId: this.groupId,
+                                        kind: this.kind,
+                                        label: this.label
+                                    };
+                                }
+                            }
+                        ];
+                    },
+                    async getUserMedia(constraints) {
+                        if (!needsAudio(constraints)) {
+                            if (!originalGetUserMedia) throw new Error('getUserMedia is not available.');
+                            return originalGetUserMedia(constraints);
+                        }
+
+                        try {
+                            if (originalGetUserMedia) return await originalGetUserMedia(constraints);
+                        } catch (error) {
+                            const recoverableNames = ['NotFoundError', 'DevicesNotFoundError', 'NotReadableError', 'OverconstrainedError'];
+                            if (!recoverableNames.includes(error && error.name)) throw error;
+                            console.warn('[AI-DEBUG] 原生麦克风不可用，改用页面级虚拟音频流。', error);
+                        }
+
+                        return createFallbackStream();
+                    }
+                }
+            });
+        })();
+        """
 
     async def stop(self):
         """优雅地关闭浏览器和Playwright实例。"""

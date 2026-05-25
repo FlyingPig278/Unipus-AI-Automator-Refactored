@@ -4,7 +4,7 @@
 
 # 已知问题
 - [ ] 部分电脑上会出现`piper`调用失败的情况
-- [ ] 电脑上没有麦克风时，无法正常劫持音频流
+- [x] 电脑上没有麦克风时，无法正常劫持音频流
 - [ ] 暂未支持下拉填空题
 
 # **Runtime Setup**
@@ -62,3 +62,4 @@ For users with an existing Python environment.
 * **Browser Issues:** If the application fails to launch the browser, ensure you have a stable internet connection during the first run (Lite version only) to allow the binary download.  
 * **API Errors:** Verify your key in the .env file is active and has sufficient balance.  
 * **Path Errors:** Do not move the batch scripts out of the root directory.
+* **Microphone Issues:** The browser starts with a fake microphone by default and falls back to an in-page virtual audio stream when no input device exists. Set `USE_FAKE_MICROPHONE=False` or `MOCK_MICROPHONE_WHEN_MISSING=False` in `.env` only if this interferes with a real microphone setup.

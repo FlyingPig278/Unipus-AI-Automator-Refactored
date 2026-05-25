@@ -29,6 +29,7 @@ class RolePlayStrategy(BaseVoiceStrategy):
 
     async def execute(self, shared_context: str = "", is_chained_task: bool = False, sub_task_index: int = -1) -> tuple[bool, bool]:
         logger.info("开始执行 Role-Play 策略...")
+        await self._ensure_microphone_stream_ready()
         await self._install_persistent_hijack()
 
         max_retries = 2

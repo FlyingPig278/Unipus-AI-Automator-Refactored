@@ -126,10 +126,13 @@ class BaseVoiceStrategy(BaseStrategy, ABC):
                     rate = wf.getframerate()
                     duration = frames / float(rate)
 
-                # 2. 在每次尝试前，都确保劫持脚本已安装（此操作是幂等的，很安全）
+                # 2. 录音前预检麦克风链路；无实体设备时会触发页面级虚拟流兜底。
+                await self._ensure_microphone_stream_ready()
+
+                # 3. 在每次尝试前，都确保劫持脚本已安装（此操作是幂等的，很安全）
                 await self._install_persistent_hijack()
-                
-                # 3. 设置持久化劫持器要使用的音频载荷
+
+                # 4. 设置持久化劫持器要使用的音频载荷
                 await self._set_persistent_audio_payload(audio_bytes)
 
                 record_button_locator = container.locator(".button-record")
@@ -168,6 +171,59 @@ class BaseVoiceStrategy(BaseStrategy, ABC):
         
         logger.success(f"✅ 所有尝试结束后，最终分数 ({last_score}) 在 80-84 之间，判定为可接受。")
         return True, False
+
+    async def _ensure_microphone_stream_ready(self):
+        """
+        预先确认页面能创建音频输入流，避免点击录音后才因无麦克风静默失败。
+        """
+        try:
+            result = await self.driver_service.page.evaluate("""
+                async () => {
+                    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                        return { ok: false, errorName: 'NotSupportedError', errorMessage: 'mediaDevices.getUserMedia unavailable' };
+                    }
+
+                    const devices = navigator.mediaDevices.enumerateDevices
+                        ? await navigator.mediaDevices.enumerateDevices().catch(() => [])
+                        : [];
+
+                    let stream = null;
+                    try {
+                        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                        const tracks = stream.getAudioTracks();
+                        return {
+                            ok: tracks.length > 0,
+                            source: stream.__aiMockMicrophone ? 'page_fallback' : 'browser_or_system',
+                            audioInputCount: devices.filter((device) => device.kind === 'audioinput').length,
+                            trackLabels: tracks.map((track) => track.label || '')
+                        };
+                    } catch (error) {
+                        return {
+                            ok: false,
+                            source: 'failed',
+                            audioInputCount: devices.filter((device) => device.kind === 'audioinput').length,
+                            errorName: error && error.name,
+                            errorMessage: error && error.message
+                        };
+                    } finally {
+                        if (stream) stream.getTracks().forEach((track) => track.stop());
+                    }
+                }
+            """)
+            if result.get("ok"):
+                logger.debug(
+                    f"麦克风预检通过：source={result.get('source')}, "
+                    f"audioInputCount={result.get('audioInputCount')}, "
+                    f"trackLabels={result.get('trackLabels')}"
+                )
+                return
+
+            logger.warning(
+                f"麦克风预检失败：{result.get('errorName')} - "
+                f"{result.get('errorMessage')}；仍会继续尝试录音。"
+            )
+        except Exception as e:
+            logger.warning(f"麦克风预检过程异常，仍会继续尝试录音: {e}")
 
     # 新增：用于持久化劫持模式下，设置要发送的AI音频载荷
     async def _set_persistent_audio_payload(self, audio_bytes: bytes):
@@ -238,7 +294,7 @@ class BaseVoiceStrategy(BaseStrategy, ABC):
         score_element = container.locator("span.score_layout, .score")
         try:
             await self.driver_service.page.wait_for_function(
-                """(el) => {
+                r"""(el) => {
                     if (!el || !el.textContent) return false;
                     const isVisible = el.offsetParent !== null;
                     const hasNumber = /^\d+$/.test(el.textContent.trim());
