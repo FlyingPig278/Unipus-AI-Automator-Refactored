@@ -11,6 +11,8 @@ __pycache__/
 
 # Cache
 .cache/
+/.playwright-browsers/
+/.runtime/
 
 # Logs
 .logs/

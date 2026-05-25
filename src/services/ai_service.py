@@ -19,6 +19,7 @@ from rich.progress import Progress, BarColumn, TextColumn, DownloadColumn, Trans
 
 import src.config as config
 from src import prompts
+from src.runtime_paths import copy_to_safe_path, get_runtime_dir, get_safe_temp_dir
 from src.utils import logger
 import warnings
 
@@ -34,15 +35,38 @@ class LocalTTSEngine:
         self.models_dir = Path(".models")
         self.models_dir.mkdir(exist_ok=True)
 
-        python_dir = Path(sys.prefix)
-        self.piper_exe_path = python_dir / "Scripts" / "piper.exe"
+        self.python_dir = Path(sys.prefix)
+        self.piper_exe_path = self._find_piper_executable()
 
         # 初始化模型路径
         self.model_path = self.models_dir / f"{self.model_name}.onnx"
         self.model_config_path = self.models_dir / f"{self.model_name}.onnx.json"
 
         # 设置安全的 espeak-ng-data 路径
-        self.safe_espeak_path = self._setup_safe_espeak_data(python_dir)
+        self.safe_espeak_path = self._setup_safe_espeak_data(self.python_dir)
+
+    def _find_piper_executable(self) -> Path:
+        candidates = []
+        if os.name == "nt":
+            candidates.extend([
+                self.python_dir / "Scripts" / "piper.exe",
+                self.python_dir / "piper.exe",
+            ])
+        else:
+            candidates.extend([
+                self.python_dir / "bin" / "piper",
+                self.python_dir / "Scripts" / "piper",
+            ])
+
+        found = shutil.which("piper")
+        if found:
+            candidates.append(Path(found))
+
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+
+        return candidates[0]
 
     def _setup_safe_espeak_data(self, python_dir: Path) -> str | None:
         """
@@ -69,7 +93,7 @@ class LocalTTSEngine:
 
             # 2. 设定一个安全的临时目标路径 (在 %TEMP% 下)
             # 例如: C:\Users\flyin\AppData\Local\Temp\piper_espeak_safe_v1
-            temp_root = Path(tempfile.gettempdir())
+            temp_root = get_runtime_dir()
             safe_target = temp_root / "piper_espeak_safe_v1"
 
             # 3. 检查是否需要复制
@@ -97,9 +121,37 @@ class LocalTTSEngine:
 
     async def ensure_model_exists(self):
         """检查并自动下载所需的TTS模型。"""
-        if not self.model_path.exists() or not self.model_config_path.exists():
+        if not self._model_files_look_valid():
             logger.info(f"📥 首次使用，需要下载Piper TTS模型: {self.model_name}")
+            self._remove_invalid_model_files()
             await self._download_model()
+        if not self._model_files_look_valid():
+            raise RuntimeError("Piper TTS模型文件校验失败，请检查网络后重试。")
+
+    def _model_files_look_valid(self) -> bool:
+        if not self.model_path.exists() or not self.model_config_path.exists():
+            return False
+        if self.model_path.stat().st_size < 1024 * 1024:
+            logger.warning(f"Piper模型文件过小，可能已损坏: {self.model_path}")
+            return False
+        try:
+            with open(self.model_config_path, "r", encoding="utf-8") as f:
+                json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            logger.warning(f"Piper模型配置文件不可用，可能已损坏: {e}")
+            return False
+        return True
+
+    def _remove_invalid_model_files(self):
+        for path in [self.model_path, self.model_config_path]:
+            part_file = path.with_suffix(path.suffix + ".part")
+            for candidate in [path, part_file]:
+                try:
+                    if candidate.exists():
+                        candidate.unlink()
+                        logger.info(f"已删除异常的TTS模型文件: {candidate}")
+                except OSError as e:
+                    logger.warning(f"删除异常模型文件失败 {candidate}: {e}")
 
     async def _download_model(self):
         """
@@ -108,6 +160,10 @@ class LocalTTSEngine:
         - 下载到.part临时文件，成功后再重命名。
         - 清理失败的下载。
         """
+        files_to_download = {
+            f"{self.model_name}.onnx": self.model_path,
+            f"{self.model_name}.onnx.json": self.model_config_path
+        }
         try:
             parts = self.model_name.split('-')
             if len(parts) != 3:
@@ -116,26 +172,21 @@ class LocalTTSEngine:
             locale, voice, quality = parts
             lang = locale.split('_')[0]
 
-            base_url = f"https://hf-mirror.com/rhasspy/piper-voices/resolve/main/{lang}/{locale}/{voice}/{quality}/{self.model_name}"
-            
-            logger.info(f"根据模型名称动态构建下载URL: {base_url}")
+            base_urls = [
+                f"https://hf-mirror.com/rhasspy/piper-voices/resolve/main/{lang}/{locale}/{voice}/{quality}/{self.model_name}",
+                f"https://huggingface.co/rhasspy/piper-voices/resolve/main/{lang}/{locale}/{voice}/{quality}/{self.model_name}",
+            ]
 
-            # 定义要下载的文件和它们的目标路径
-            files_to_download = {
-                f"{self.model_name}.onnx": self.model_path,
-                f"{self.model_name}.onnx.json": self.model_config_path
-            }
-
-            # 使用 rich.progress 创建一个美观的进度条
-            progress = Progress(
-                TextColumn("[bold blue]{task.fields[filename]}", justify="right"),
-                BarColumn(bar_width=None),
-                "[progress.percentage]{task.percentage:>3.1f}%",
-                "•",
-                DownloadColumn(),
-                "•",
-                TransferSpeedColumn(),
-            )
+            def make_progress():
+                return Progress(
+                    TextColumn("[bold blue]{task.fields[filename]}", justify="right"),
+                    BarColumn(bar_width=None),
+                    "[progress.percentage]{task.percentage:>3.1f}%",
+                    "•",
+                    DownloadColumn(),
+                    "•",
+                    TransferSpeedColumn(),
+                )
 
             def download_job(url, dest_path):
                 dest_path_part = dest_path.with_suffix(dest_path.suffix + '.part')
@@ -169,17 +220,34 @@ class LocalTTSEngine:
                     progress.update(task_id, visible=False)
 
 
-            with progress:
-                for filename, path in files_to_download.items():
-                    url = f"{base_url}{'.onnx' if filename.endswith('.onnx') else '.onnx.json'}"
-                    # 使用 to_thread 在异步函数中运行同步的下载代码
-                    await asyncio.to_thread(download_job, url, path)
+            last_error = None
+            for base_url in base_urls:
+                logger.info(f"正在尝试从模型源下载: {base_url}")
+                try:
+                    progress = make_progress()
+                    with progress:
+                        for filename, path in files_to_download.items():
+                            url = f"{base_url}{'.onnx' if filename.endswith('.onnx') else '.onnx.json'}"
+                            await asyncio.to_thread(download_job, url, path)
+                    last_error = None
+                    break
+                except Exception as e:
+                    last_error = e
+                    logger.warning(f"从当前模型源下载失败，将尝试下一个源: {e}")
+                    for _, path in files_to_download.items():
+                        part_file = path.with_suffix(path.suffix + '.part')
+                        if part_file.exists():
+                            part_file.unlink()
+
+            if last_error:
+                raise last_error
 
             # 最终校验文件是否存在
-            if self.model_path.exists() and self.model_config_path.exists():
+            if self._model_files_look_valid():
                 logger.success("✅ 模型及配置文件下载完成。")
             else:
-                raise FileNotFoundError("模型文件下载后校验失败，一个或多个文件不存在。")
+                self._remove_invalid_model_files()
+                raise FileNotFoundError("模型文件下载后校验失败，一个或多个文件不存在或已损坏。")
 
         except Exception as e:
             logger.error(f"模型下载失败: {e}")
@@ -249,7 +317,7 @@ class LocalTTSEngine:
             return None
 
         # 创建一个临时的WAV文件路径
-        output_path = Path(tempfile.gettempdir()) / f"piper_output_{uuid.uuid4().hex}.wav"
+        output_path = get_safe_temp_dir() / f"piper_output_{uuid.uuid4().hex}.wav"
         
         try:
             await self.ensure_model_exists()
@@ -261,10 +329,16 @@ class LocalTTSEngine:
                 logger.error("请确认 'piper-tts' 是否已通过 'run.bat' 脚本正确安装。")
                 return None
 
+            model_path = copy_to_safe_path(self.model_path, "piper_models")
+            model_config_path = self.model_config_path
+            if model_path != self.model_path:
+                model_config_path = copy_to_safe_path(self.model_config_path, "piper_models")
+                logger.info(f"检测到模型路径包含非ASCII字符，已复制到安全路径: {model_path.parent}")
+
             logger.debug(f"正在使用Piper TTS合成语音 (语速: {length_scale}, noise_scale: {noise_scale}, noise_w: {noise_w}): '{clean_text[:30]}...'")
             piper_command = [
                 str(self.piper_exe_path),
-                "--model", str(self.model_path),
+                "--model", str(model_path),
                 "--output_file", str(output_path),
                 "--length_scale", str(length_scale),
                 "--noise_scale", str(noise_scale),
@@ -278,6 +352,7 @@ class LocalTTSEngine:
             env = os.environ.copy()
             if self.safe_espeak_path:
                 env["ESPEAK_DATA_PATH"] = self.safe_espeak_path
+                env["PHONEMIZE_ESPEAK_DATA"] = self.safe_espeak_path
                 logger.debug(f"已注入环境变量 ESPEAK_DATA_PATH: {self.safe_espeak_path}")
 
             process = await asyncio.create_subprocess_exec(
@@ -355,7 +430,18 @@ class AIService:
         # 目标目录为当前Python环境下的'bin'文件夹，具有通用性
         # sys.prefix 在虚拟环境中指向 .venv 目录，在便携版中指向 python-embed 目录
         try:
-            target_dir = Path(sys.prefix) / "bin"
+            system_ffmpeg = shutil.which("ffmpeg")
+            if system_ffmpeg:
+                creation_flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+                subprocess.run([system_ffmpeg, "-version"], check=True, capture_output=True, creationflags=creation_flags)
+                logger.success(f"FFmpeg 已在系统PATH中可用: {system_ffmpeg}")
+                return
+
+            if os.name != "nt":
+                logger.warning("未在PATH中找到ffmpeg。非Windows环境下请通过系统包管理器安装ffmpeg。")
+                return
+
+            target_dir = get_runtime_dir() / "bin"
             target_dir.mkdir(exist_ok=True)
             ffmpeg_exe_path = target_dir / "ffmpeg.exe"
 
@@ -384,7 +470,7 @@ class AIService:
         # 使用gh-proxy.com作为GitHub的国内加速代理
         ffmpeg_zip_url = "https://gh-proxy.com/https://github.com/GyanD/codexffmpeg/releases/download/6.0/ffmpeg-6.0-essentials_build.zip"
         
-        temp_dir = Path(tempfile.gettempdir()) / f"ffmpeg_dl_{uuid.uuid4().hex}"
+        temp_dir = get_safe_temp_dir() / f"ffmpeg_dl_{uuid.uuid4().hex}"
         temp_dir.mkdir(parents=True, exist_ok=True)
         ffmpeg_zip_path = temp_dir / "ffmpeg.zip"
 
@@ -459,8 +545,8 @@ class AIService:
             response = requests.get(url, stream=True, headers=config.HEADERS, timeout=30)
             response.raise_for_status()
 
-            # 创建一个自定义的临时文件夹
-            temp_dir = Path(".temp_downloads")
+            # 创建一个自定义的临时文件夹，避免 Whisper/ffmpeg 遇到中文路径。
+            temp_dir = get_safe_temp_dir() / "media"
             temp_dir.mkdir(parents=True, exist_ok=True)  # 如果文件夹不存在就创建
 
             # 去掉 URL 中的查询参数部分
@@ -548,4 +634,3 @@ class AIService:
             logger.error(f"调用DeepSeek API时发生错误: {e}")
             return None
 			
-
