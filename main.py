@@ -18,6 +18,7 @@ from src.strategies.multiple_choice_strategy import MultipleChoiceStrategy
 from src.strategies.discussion_strategy import DiscussionStrategy
 from src.strategies.drag_and_drop_strategy import DragAndDropStrategy
 from src.strategies.fill_in_the_blank_strategy import FillInTheBlankStrategy
+from src.strategies.dropdown_selection_strategy import DropdownSelectionStrategy
 from src.strategies.role_play_strategy import RolePlayStrategy
 from src.strategies.short_answer_strategy import ShortAnswerStrategy
 from src.strategies.qa_voice_strategy import QAVoiceStrategy
@@ -40,6 +41,7 @@ AVAILABLE_STRATEGIES = [
     # 常规选择、填空、拖拽题
     CheckboxStrategy,
     DragAndDropStrategy,
+    DropdownSelectionStrategy,
     FillInTheBlankStrategy,
     ShortAnswerStrategy,
     MultipleChoiceStrategy,
@@ -92,6 +94,8 @@ async def _cache_chained_answers(
             answers = []
             if strategy_type == "fill_in_the_blank":
                 answers = await browser_service.extract_fill_in_the_blank_answers_from_analysis_page()
+            elif strategy_type == "dropdown_selection":
+                answers = await browser_service.extract_dropdown_selection_answers_from_analysis_page()
             elif strategy_type in ["single_choice", "multiple_choice", "drag_and_drop_js_injection"]:
                 answers = await browser_service.extract_all_correct_answers_from_analysis_page()
             
@@ -117,6 +121,7 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
         MultipleChoiceStrategy,
         FillInTheBlankStrategy,
         DragAndDropStrategy,
+        DropdownSelectionStrategy,
     ]
     
     # 创建一个本次运行要使用的策略列表副本

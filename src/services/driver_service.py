@@ -693,6 +693,38 @@ class DriverService:
         logger.info(f"已提取到所有填空题答案: {all_answers}")
         return all_answers
 
+    async def extract_dropdown_selection_answers_from_analysis_page(self) -> list[str]:
+        """从答案解析页面提取下拉填空题的正确答案。"""
+        logger.info("正在为下拉填空题从解析页面提取所有正确答案...")
+        all_answers = []
+        blank_containers = await self.page.locator(".fe-scoop").all()
+
+        if not blank_containers:
+            logger.warning("在解析页面未找到任何下拉填空容器 (.fe-scoop)。")
+            return []
+
+        for i, container in enumerate(blank_containers):
+            correct_answer = ""
+            try:
+                reference_answer_locator = container.locator("span.reference")
+                if await reference_answer_locator.count() > 0:
+                    correct_answer = (await reference_answer_locator.first.text_content()).strip()
+                else:
+                    selected_text_locator = container.locator(".user-answer-text, .ant-dropdown-trigger.user-answer")
+                    if await selected_text_locator.count() > 0:
+                        correct_answer = (await selected_text_locator.first.text_content()).strip()
+
+                correct_answer = html.unescape(correct_answer).strip()
+                all_answers.append(correct_answer)
+                logger.info(f"  - 下拉空 {i + 1}: 找到答案 '{correct_answer}'")
+
+            except Exception as e:
+                logger.error(f"  - 提取第 {i + 1} 个下拉题答案时出错: {e}")
+                all_answers.append("")
+
+        logger.info(f"已提取到所有下拉填空题答案: {all_answers}")
+        return all_answers
+
     async def _extract_additional_material_for_ai(self) -> str:
         """
         从页面中提取所有额外材料（纯文本或表格），用于补充给AI的Prompt。

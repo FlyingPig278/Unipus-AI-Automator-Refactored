@@ -115,6 +115,33 @@ FILL_IN_THE_BLANK_PROMPT = """
 {question_text}
 """
 
+DROPDOWN_SELECTION_PROMPT = """
+请帮我解答以下英语下拉填空题。根据题目说明、文章或听力/视频转写内容、题目表格或文本，为每一个 [Blank X] 从给定候选项中选择最合适的一项。
+
+页面上共有 {blank_count} 个下拉空。你必须严格按 [Blank 1], [Blank 2], ... 的顺序返回 {blank_count} 个答案。答案必须使用候选项中的原文，不要改写、翻译或补充解释。
+
+请只返回JSON，格式如下:
+{{
+  "answers": [
+    "候选项原文 for Blank 1",
+    "候选项原文 for Blank 2"
+  ]
+}}
+
+---
+【题目说明】:
+{direction_text}
+
+【文章或听力/视频转写内容及额外材料】:
+{article_text}
+
+【题目文本】:
+{question_text}
+
+【每个空的候选项】:
+{options_text}
+"""
+
 # 提示词：处理简答题（Short Answer Questions）
 SHORT_ANSWER_PROMPT = """你是一个用于解答U校园英语题的AI助手。请根据以下提供的上下文信息（包括题目说明、文章或听力原文）和一系列子问题，为每一个子问题生成一个简洁明了的英文回答。
 
