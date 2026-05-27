@@ -138,6 +138,7 @@ echo [INFO] Files in '%LITE_STAGING_DIR%':
 dir "%LITE_STAGING_DIR%"
 
 copy "run.bat" "%LITE_STAGING_DIR%\" > nul
+if exist "%LITE_STAGING_DIR%\run-portable.bat" del "%LITE_STAGING_DIR%\run-portable.bat"
 
 REM 1.3. Create final zip file
 set "LITE_ZIP_NAME=%PROJECT_NAME%-Lite-v%VERSION%.zip"
@@ -182,6 +183,7 @@ echo      - Copying 'python-embed' directory (this may take some time)...
 xcopy "python-embed" "%PORTABLE_STAGING_DIR%\python-embed\" /s /e /i /q /y
 echo      - Copying and renaming 'run-portable.bat' to 'run.bat'...
 copy "run-portable.bat" "%PORTABLE_STAGING_DIR%\run.bat" > nul
+if exist "%PORTABLE_STAGING_DIR%\run-portable.bat" del "%PORTABLE_STAGING_DIR%\run-portable.bat"
 
 REM 2.4. Create final zip file
 set "PORTABLE_ZIP_NAME=%PROJECT_NAME%-Portable-v%VERSION%.zip"
