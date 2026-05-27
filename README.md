@@ -77,6 +77,9 @@ USE_FAKE_MICROPHONE="True"
 
 # 页面仍拿不到麦克风时注入虚拟音频流兜底
 MOCK_MICROPHONE_WHEN_MISSING="True"
+
+# Whisper 语音识别模型下载目录
+WHISPER_DOWNLOAD_ROOT=".models/whisper"
 ```
 
 浏览器通道可选值：
@@ -170,6 +173,12 @@ gh release create vX.Y.Z ./*.zip --title "vX.Y.Z" --notes "Release notes"
 BROWSER_CHANNEL="chromium"
 ```
 
+启动脚本默认会让 Playwright Chromium 下载走 `npmmirror`，失败后修复脚本会再尝试官方源。若需要自定义多个下载源，可设置：
+
+```env
+PLAYWRIGHT_DOWNLOAD_HOSTS="https://npmmirror.com/mirrors/playwright,"
+```
+
 ### 没有麦克风时语音题失败
 
 默认已启用假麦克风和页面级虚拟音频流兜底。若它影响真实麦克风，可设置：
@@ -182,6 +191,16 @@ MOCK_MICROPHONE_WHEN_MISSING="False"
 ### Piper / TTS 模型异常
 
 程序会检查模型文件是否存在和大小是否异常，必要时重新下载。若仍失败，可删除 `.models/` 后重试。
+
+### Whisper 语音识别模型下载失败
+
+Whisper 模型只会在需要转录音频或视频材料时按需加载。默认 `base` 模型会优先尝试国内可访问性更好的镜像，并校验官方 SHA256；如果仍下载失败，程序会跳过本次转录，不影响普通文字题和 TTS 语音作答。
+
+如需自行指定模型源，可在 `.env` 中设置：
+
+```env
+WHISPER_MODEL_URLS="https://example.com/base.pt"
+```
 
 ### FFmpeg 异常
 

@@ -15,7 +15,13 @@ LOGIN_URL = "https://ucloud.unipus.cn/home"
 DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
 
 # --- AI Models ---
-WHISPER_MODEL = "base"
+WHISPER_MODEL = os.getenv("WHISPER_MODEL", "base")
+WHISPER_DOWNLOAD_ROOT = os.getenv("WHISPER_DOWNLOAD_ROOT", ".models/whisper")
+WHISPER_MODEL_URLS = [
+    url.strip()
+    for url in os.getenv("WHISPER_MODEL_URLS", "").split(",")
+    if url.strip()
+]
 DEEPSEEK_CHAT_MODEL = "deepseek-chat"
 
 # ==============================================================================

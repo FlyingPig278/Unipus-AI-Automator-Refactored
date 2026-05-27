@@ -15,6 +15,9 @@ set "PYTHON_EXE=%PYTHON_DIR%\python.exe"
 set "PYPI_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple"
 set "PYTHONPATH=%~dp0"
 set "PLAYWRIGHT_BROWSERS_PATH=%PYTHON_DIR%\browsers"
+if not defined PLAYWRIGHT_DOWNLOAD_HOSTS set "PLAYWRIGHT_DOWNLOAD_HOSTS=https://npmmirror.com/mirrors/playwright,"
+if not defined PLAYWRIGHT_DOWNLOAD_HOST set "PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright"
+if not defined PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT set "PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT=120000"
 
 if not exist "%PYTHON_EXE%" (
     echo [ERROR] Embedded Python is missing: %PYTHON_EXE%

@@ -14,6 +14,9 @@ set "VENV_DIR=.venv"
 set "PYPI_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple"
 set "PYTHONPATH=%~dp0"
 set "PLAYWRIGHT_BROWSERS_PATH=%~dp0.playwright-browsers"
+if not defined PLAYWRIGHT_DOWNLOAD_HOSTS set "PLAYWRIGHT_DOWNLOAD_HOSTS=https://npmmirror.com/mirrors/playwright,"
+if not defined PLAYWRIGHT_DOWNLOAD_HOST set "PLAYWRIGHT_DOWNLOAD_HOST=https://npmmirror.com/mirrors/playwright"
+if not defined PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT set "PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT=120000"
 
 python --version >nul 2>&1
 if errorlevel 1 (

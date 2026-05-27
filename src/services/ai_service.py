@@ -1,5 +1,6 @@
 # src/services/ai_service.py
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -11,8 +12,9 @@ import unicodedata
 import uuid  # 新增导入
 import zipfile
 from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
 import requests
-import whisper
 from openai import OpenAI
 from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam
 from rich.progress import Progress, BarColumn, TextColumn, DownloadColumn, TransferSpeedColumn
@@ -396,11 +398,11 @@ class AIService:
         初始化AI服务。注意：这是一个同步构造函数，
         异步组件的初始化请通过调用'create'工厂方法来完成。
         """
-        # 同步组件的初始化
-        logger.info("正在加载Whisper模型...")
+        # Whisper 模型体积较大，且首次加载可能触发网络下载。这里延迟到真正需要转录时再加载，
+        # 避免网络/SSL 问题导致普通答题流程启动失败。
         warnings.filterwarnings("ignore", message="FP16 is not supported on CPU; using FP32 instead", category=UserWarning)
-        self.whisper_model = whisper.load_model(config.WHISPER_MODEL)
-        logger.info("Whisper模型加载完毕。")
+        self.whisper_model: Any | None = None
+        self.whisper_unavailable_reason: str | None = None
 
         logger.info("正在配置DeepSeek客户端...")
         self.deepseek_client = OpenAI(api_key=config.DEEPSEEK_API_KEY, base_url=config.DEEPSEEK_BASE_URL)
@@ -419,6 +421,144 @@ class AIService:
         # 调用异步的初始化部分
         await instance._check_and_configure_ffmpeg()
         return instance
+
+    def _ensure_whisper_model(self) -> bool:
+        """
+        按需加载 Whisper 模型。
+
+        openai-whisper 在模型缺失时会直接下载模型文件；网络代理、证书或远端连接异常
+        都可能抛出 URLError/SSLError。转录是增强能力，不应阻塞主程序启动或普通题型。
+        """
+        if self.whisper_model is not None:
+            return True
+        if self.whisper_unavailable_reason:
+            logger.warning(f"Whisper模型此前加载失败，跳过本次语音识别: {self.whisper_unavailable_reason}")
+            return False
+
+        try:
+            logger.info("正在按需加载Whisper模型...")
+            import whisper
+
+            download_root = Path(config.WHISPER_DOWNLOAD_ROOT)
+            if not self._ensure_whisper_checkpoint(whisper, download_root):
+                return False
+
+            self.whisper_model = whisper.load_model(config.WHISPER_MODEL, download_root=str(download_root))
+            logger.info("Whisper模型加载完毕。")
+            return True
+        except Exception as e:
+            self.whisper_unavailable_reason = str(e)
+            logger.error(f"Whisper模型加载失败，语音识别功能将暂时不可用: {e}")
+            logger.warning("普通文字题、选择题、填空题和TTS语音作答仍可继续；如需转录音视频，请检查网络后重试或预先下载Whisper模型。")
+            return False
+
+    def _ensure_whisper_checkpoint(self, whisper_module: Any, download_root: Path) -> bool:
+        model_name = config.WHISPER_MODEL
+        official_url = getattr(whisper_module, "_MODELS", {}).get(model_name)
+        if not official_url:
+            logger.warning(f"未知Whisper模型 '{model_name}'，将交给 openai-whisper 默认逻辑处理。")
+            return True
+
+        expected_sha256 = official_url.split("/")[-2]
+        filename = os.path.basename(urlparse(official_url).path)
+        target_path = download_root / filename
+        download_root.mkdir(parents=True, exist_ok=True)
+
+        if self._file_sha256_matches(target_path, expected_sha256):
+            return True
+
+        if target_path.exists():
+            logger.warning(f"Whisper模型文件校验失败，可能已损坏，将重新下载: {target_path}")
+            try:
+                target_path.unlink()
+            except OSError as e:
+                logger.error(f"删除损坏Whisper模型失败: {e}")
+                return False
+
+        urls = self._whisper_download_urls(model_name, filename, expected_sha256, official_url)
+        last_error = None
+        for url in urls:
+            try:
+                logger.info(f"正在下载Whisper模型: {url}")
+                self._download_file_with_sha256(url, target_path, expected_sha256)
+                logger.success(f"Whisper模型下载并校验完成: {target_path}")
+                return True
+            except Exception as e:
+                last_error = e
+                logger.warning(f"当前Whisper模型源下载失败，将尝试下一个源: {e}")
+
+        self.whisper_unavailable_reason = str(last_error or "没有可用的Whisper模型下载源")
+        logger.error(f"Whisper模型准备失败: {self.whisper_unavailable_reason}")
+        return False
+
+    def _whisper_download_urls(self, model_name: str, filename: str, expected_sha256: str, official_url: str) -> list[str]:
+        urls = []
+        default_mirrors = {
+            "base": [
+                "https://hf-mirror.com/jerpint/whisper/resolve/main/base.pt",
+                "https://hf-mirror.com/TroyHow/whisper/resolve/main/base.pt",
+            ],
+        }
+
+        configured_urls = config.WHISPER_MODEL_URLS or default_mirrors.get(model_name, [])
+        for url in configured_urls:
+            urls.append(
+                url.format(
+                    model=model_name,
+                    filename=filename,
+                    sha256=expected_sha256,
+                    official_url=official_url,
+                )
+            )
+        urls.append(official_url)
+
+        normalized = []
+        for url in urls:
+            if url and url not in normalized:
+                normalized.append(url)
+        return normalized
+
+    @staticmethod
+    def _file_sha256_matches(path: Path, expected_sha256: str) -> bool:
+        if not path.exists():
+            return False
+
+        digest = hashlib.sha256()
+        try:
+            with open(path, "rb") as f:
+                for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                    digest.update(chunk)
+        except OSError as e:
+            logger.warning(f"读取Whisper模型文件失败: {e}")
+            return False
+
+        return digest.hexdigest() == expected_sha256
+
+    def _download_file_with_sha256(self, url: str, target_path: Path, expected_sha256: str) -> None:
+        part_path = target_path.with_suffix(target_path.suffix + ".part")
+        if part_path.exists():
+            part_path.unlink()
+
+        digest = hashlib.sha256()
+        try:
+            with requests.get(url, stream=True, timeout=120) as response:
+                response.raise_for_status()
+                with open(part_path, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=1024 * 1024):
+                        if not chunk:
+                            continue
+                        f.write(chunk)
+                        digest.update(chunk)
+
+            actual_sha256 = digest.hexdigest()
+            if actual_sha256 != expected_sha256:
+                raise RuntimeError(f"SHA256不匹配，期望 {expected_sha256}，实际 {actual_sha256}")
+
+            part_path.replace(target_path)
+        except Exception:
+            if part_path.exists():
+                part_path.unlink()
+            raise
 
     async def _check_and_configure_ffmpeg(self):
         """
@@ -592,6 +732,8 @@ class AIService:
         """
         logger.info(f"正在进行语音识别: {file_path}")
         try:
+            if not self._ensure_whisper_model():
+                return ""
             result = self.whisper_model.transcribe(file_path)
             text = result.get("text", "")
             logger.info("语音识别完成。")

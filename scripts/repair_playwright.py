@@ -17,10 +17,38 @@ def browser_dir() -> Path | None:
     return None
 
 
-def run_playwright_install() -> bool:
+def playwright_download_hosts() -> list[str]:
+    configured_hosts = os.environ.get("PLAYWRIGHT_DOWNLOAD_HOSTS")
+    if configured_hosts is not None:
+        hosts = [host.strip() for host in configured_hosts.split(",")]
+    else:
+        current_host = os.environ.get("PLAYWRIGHT_DOWNLOAD_HOST")
+        hosts = [current_host] if current_host else ["https://npmmirror.com/mirrors/playwright"]
+
+    # 空字符串表示使用 Playwright 官方默认下载源，作为最后兜底。
+    if "" not in hosts:
+        hosts.append("")
+
+    normalized = []
+    for host in hosts:
+        if host not in normalized:
+            normalized.append(host)
+    return normalized
+
+
+def run_playwright_install(download_host: str) -> bool:
     command = [sys.executable, "-m", "playwright", "install", "chromium"]
-    log("Installing/checking Playwright Chromium...")
-    result = subprocess.run(command)
+    env = os.environ.copy()
+    if download_host:
+        env["PLAYWRIGHT_DOWNLOAD_HOST"] = download_host
+        env.pop("PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST", None)
+        log(f"Installing/checking Playwright Chromium via mirror: {download_host}")
+    else:
+        env.pop("PLAYWRIGHT_DOWNLOAD_HOST", None)
+        env.pop("PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST", None)
+        log("Installing/checking Playwright Chromium via official source...")
+
+    result = subprocess.run(command, env=env)
     return result.returncode == 0
 
 
@@ -49,14 +77,21 @@ def remove_browser_cache() -> None:
 
 
 async def main() -> int:
-    attempts = 2
-    for attempt in range(1, attempts + 1):
-        log(f"Browser repair attempt {attempt}/{attempts}.")
-        if run_playwright_install() and await validate_chromium():
-            return 0
+    hosts = playwright_download_hosts()
+    attempts_per_host = 2
+    total_attempts = len(hosts) * attempts_per_host
+    attempt = 0
 
-        if attempt < attempts:
-            remove_browser_cache()
+    for host in hosts:
+        for host_attempt in range(1, attempts_per_host + 1):
+            attempt += 1
+            host_label = host or "official"
+            log(f"Browser repair attempt {attempt}/{total_attempts} ({host_label}, {host_attempt}/{attempts_per_host}).")
+            if run_playwright_install(host) and await validate_chromium():
+                return 0
+
+            if attempt < total_attempts:
+                remove_browser_cache()
 
     log("Browser setup is still broken after repair attempts.")
     return 1
