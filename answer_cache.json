@@ -1676,5 +1676,1535 @@
         }
       }
     }
+  },
+  "大学英语听说教程（第二版）2": {
+    "The power of language": {
+      "1-4 Listen to understand": {
+        "News report 1": {
+          "News report 1": {
+            "type": "single_choice",
+            "answers": [
+              "A",
+              "D"
+            ]
+          }
+        },
+        "News report 2": {
+          "News report 2": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "B"
+            ]
+          }
+        },
+        "News report 3": {
+          "News report 3": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "D",
+              "C"
+            ]
+          }
+        }
+      },
+      "1-5 Listen to communicate": {
+        "Conversation 1": {
+          "Conversation 1-1": {
+            "type": "single_choice",
+            "answers": [
+              "A",
+              "C",
+              "B"
+            ]
+          },
+          "Conversation 1-2": {
+            "type": "fill_in_the_blank",
+            "answers": [
+              "semester",
+              "apartment",
+              "elevator",
+              "gas",
+              "labour",
+              "colour",
+              "Don't flog a dead horse",
+              "We have skeletons in the closet"
+            ]
+          }
+        },
+        "Conversation 2": {
+          "Conversation 2-1": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "B",
+              "D"
+            ]
+          },
+          "Conversation 2-2": {
+            "type": "fill_in_the_blank",
+            "answers": [
+              "Go ahead",
+              "They did",
+              "It sure did",
+              "What was it",
+              "That is really funny"
+            ]
+          }
+        },
+        "Act-out": {
+          "Try it out": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "A",
+              "D",
+              "F",
+              "C",
+              "E"
+            ]
+          }
+        }
+      },
+      "1-6 Listen to share": {
+        "Passage 1": {
+          "Passage 1-2": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "C",
+              "C"
+            ]
+          },
+          "Passage 1-3": {
+            "type": "fill_in_the_blank",
+            "answers": [
+              "develop",
+              "roles",
+              "understanding",
+              "experience",
+              "teach",
+              "public speaking"
+            ]
+          }
+        },
+        "Passage 2": {
+          "Passage 2-2": {
+            "type": "single_choice",
+            "answers": [
+              "A",
+              "B",
+              "B"
+            ]
+          },
+          "Passage 2-3": {
+            "type": "single_choice",
+            "answers": [
+              "A",
+              "B",
+              "B",
+              "A"
+            ]
+          }
+        }
+      },
+      "1-8 View the world": {
+        "View the world": {
+          "Activity 1": {
+            "type": "dropdown_selection",
+            "answers": [
+              "Everything is all right.",
+              "similar to giving someone the finger",
+              "vulgar",
+              "symbol for the \"evil eye\"",
+              "wishing someone good luck",
+              "Great! I like it! All right!",
+              "offensive",
+              "the number one"
+            ]
+          }
+        }
+      },
+      "1-9 Further listening": {
+        "News report": {
+          "News report": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "A",
+              "D"
+            ]
+          }
+        },
+        "Conversation": {
+          "Conversation": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "C",
+              "B",
+              "D"
+            ]
+          }
+        },
+        "Passage": {
+          "Passage": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "C",
+              "B"
+            ]
+          }
+        }
+      }
+    },
+    "College challenges": {
+      "2-4 Listen to understand": {
+        "News report 1": {
+          "News report 1": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "D"
+            ]
+          }
+        },
+        "News report 2": {
+          "News report 2": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "D"
+            ]
+          }
+        },
+        "News report 3": {
+          "News report 3": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "A",
+              "A"
+            ]
+          }
+        }
+      },
+      "2-5 Listen to communicate": {
+        "Conversation 1": {
+          "Conversation 1-1": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "D",
+              "B"
+            ]
+          },
+          "Conversation 1-2": {
+            "type": "fill_in_the_blank",
+            "answers": [
+              "academic work",
+              "active studying",
+              "concentration",
+              "distractions"
+            ]
+          }
+        },
+        "Conversation 2": {
+          "Conversation 2-1": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "D",
+              "D"
+            ]
+          },
+          "Conversation 2-2": {
+            "type": "single_choice",
+            "answers": [
+              "A",
+              "B",
+              "A",
+              "A"
+            ]
+          }
+        },
+        "Act-out": {
+          "Try it out": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "D",
+              "B",
+              "A",
+              "E"
+            ]
+          }
+        }
+      },
+      "2-6 Listen to share": {
+        "Passage 1": {
+          "Passage 1-2": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "D",
+              "B",
+              "B"
+            ]
+          },
+          "Passage 1-3": {
+            "type": "fill_in_the_blank",
+            "answers": [
+              "keep up",
+              "hold down",
+              "reading list",
+              "burned out",
+              "the last thing"
+            ]
+          }
+        },
+        "Passage 2": {
+          "Passage 2-2": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "A",
+              "B"
+            ]
+          },
+          "Passage 2-3": {
+            "type": "drag_and_drop_js_injection",
+            "answers": [
+              "D",
+              "A",
+              "B",
+              "E",
+              "C"
+            ]
+          }
+        }
+      },
+      "2-8 View the world": {
+        "View the world": {
+          "Activity 1": {
+            "type": "drag_and_drop_js_injection",
+            "answers": [
+              "A",
+              "F",
+              "B",
+              "E",
+              "C",
+              "D"
+            ]
+          }
+        }
+      },
+      "2-9 Further listening": {
+        "News report": {
+          "News report": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "A",
+              "D"
+            ]
+          }
+        },
+        "Conversation": {
+          "Conversation": {
+            "type": "single_choice",
+            "answers": [
+              "A",
+              "B",
+              "D"
+            ]
+          }
+        },
+        "Passage": {
+          "Passage": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "B",
+              "C"
+            ]
+          }
+        }
+      }
+    },
+    "We are young": {
+      "3-4 Listen to understand": {
+        "News report 1": {
+          "News report 1": {
+            "type": "single_choice",
+            "answers": [
+              "A",
+              "A"
+            ]
+          }
+        },
+        "News report 2": {
+          "News report 2": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "B"
+            ]
+          }
+        },
+        "News report 3": {
+          "News report 3": {
+            "type": "single_choice",
+            "answers": [
+              "A",
+              "B",
+              "C"
+            ]
+          }
+        }
+      },
+      "3-5 Listen to communicate": {
+        "Conversation 1": {
+          "Conversation 1-1": {
+            "type": "single_choice",
+            "answers": [
+              "A",
+              "B",
+              "B"
+            ]
+          },
+          "Conversation 1-2": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "A",
+              "B",
+              "A",
+              "A"
+            ]
+          }
+        },
+        "Conversation 2": {
+          "Conversation 2-1": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "B",
+              "D",
+              "A"
+            ]
+          },
+          "Conversation 2-2": {
+            "type": "fill_in_the_blank",
+            "answers": [
+              "excited about",
+              "what major to take",
+              "move on to",
+              "a difficulty",
+              "deal with",
+              "work independently",
+              "I learn as I do"
+            ]
+          }
+        },
+        "Act-out": {
+          "Try it out": {
+            "type": "single_choice",
+            "answers": [
+              "F",
+              "E",
+              "D",
+              "C",
+              "B",
+              "A"
+            ]
+          }
+        }
+      },
+      "3-6 Listen to share": {
+        "Passage 1": {
+          "Passage 1-2": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "B",
+              "C"
+            ]
+          },
+          "Passage 1-3": {
+            "type": "fill_in_the_blank",
+            "answers": [
+              "one identity",
+              "sets of skills",
+              "innovate",
+              "part of their lives",
+              "marketing",
+              "hobbies",
+              "time management",
+              "determination"
+            ]
+          }
+        },
+        "Passage 2": {
+          "Passage 2-2": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "D",
+              "C"
+            ]
+          },
+          "Passage 2-3": {
+            "type": "drag_and_drop_js_injection",
+            "answers": [
+              "C",
+              "A",
+              "E",
+              "B",
+              "D"
+            ]
+          }
+        }
+      },
+      "3-8 View the world": {
+        "View the world": {
+          "Activity 1": {
+            "type": "fill_in_the_blank",
+            "answers": [
+              "cope",
+              "goes wrong",
+              "solving problems",
+              "a can-do",
+              "smaller",
+              "positives",
+              "optimistic",
+              "support network",
+              "in control",
+              "overwhelmed"
+            ]
+          }
+        }
+      },
+      "3-9 Further listening": {
+        "News report": {
+          "News report": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "A"
+            ]
+          }
+        },
+        "Conversation": {
+          "Conversation": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "C",
+              "C",
+              "A"
+            ]
+          }
+        },
+        "Passage": {
+          "Passage": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "C",
+              "A",
+              "B"
+            ]
+          }
+        }
+      }
+    },
+    "Pursuits of life": {
+      "4-4 Listen to understand": {
+        "News report 1": {
+          "News report 1": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "D"
+            ]
+          }
+        },
+        "News report 2": {
+          "News report 2": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "A"
+            ]
+          }
+        },
+        "News report 3": {
+          "News report 3": {
+            "type": "single_choice",
+            "answers": [
+              "A",
+              "D",
+              "B"
+            ]
+          }
+        }
+      },
+      "4-5 Listen to communicate": {
+        "Conversation 1": {
+          "Conversation 1-1": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "D",
+              "C",
+              "C"
+            ]
+          },
+          "Conversation 1-2": {
+            "type": "fill_in_the_blank",
+            "answers": [
+              "challenges",
+              "grow",
+              "talk",
+              "experts"
+            ]
+          }
+        },
+        "Conversation 2": {
+          "Conversation 2-1": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "C",
+              "C",
+              "C"
+            ]
+          },
+          "Conversation 2-2": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "B",
+              "A",
+              "A",
+              "A"
+            ]
+          }
+        },
+        "Act-out": {
+          "Try it out": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "E",
+              "F",
+              "D",
+              "C",
+              "A"
+            ]
+          }
+        }
+      },
+      "4-6 Listen to share": {
+        "Passage 1": {
+          "Passage 1-2": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "A",
+              "C"
+            ]
+          },
+          "Passage 1-3": {
+            "type": "fill_in_the_blank",
+            "answers": [
+              "a great variety of",
+              "smart",
+              "a family man",
+              "lights up",
+              "loving",
+              "anxiety"
+            ]
+          }
+        },
+        "Passage 2": {
+          "Passage 2-2": {
+            "type": "single_choice",
+            "answers": [
+              "A",
+              "C",
+              "A",
+              "A"
+            ]
+          },
+          "Passage 2-3": {
+            "type": "drag_and_drop_js_injection",
+            "answers": [
+              "B",
+              "D",
+              "F",
+              "E",
+              "C",
+              "A"
+            ]
+          }
+        }
+      },
+      "4-8 View the world": {
+        "View the world": {
+          "Activity 1": {
+            "type": "fill_in_the_blank",
+            "answers": [
+              "weird",
+              "involved",
+              "go easy on",
+              "tough",
+              "what other people think",
+              "tell the truth",
+              "try something new",
+              "younger friends"
+            ]
+          }
+        }
+      },
+      "4-9 Further listening": {
+        "News report": {
+          "News report": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "C",
+              "B"
+            ]
+          }
+        },
+        "Conversation": {
+          "Conversation": {
+            "type": "single_choice",
+            "answers": [
+              "A",
+              "A",
+              "D"
+            ]
+          }
+        },
+        "Passage": {
+          "Passage": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "A",
+              "B"
+            ]
+          }
+        }
+      }
+    },
+    "Midterm": {
+      "Listening comprehension": {
+        "Listening comprehension": {
+          "0": {
+            "type": "single_choice",
+            "answers": [
+              "A",
+              "C"
+            ]
+          },
+          "1": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "D"
+            ]
+          },
+          "2": {
+            "type": "single_choice",
+            "answers": [
+              "A",
+              "C",
+              "C"
+            ]
+          },
+          "3": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "B",
+              "C",
+              "C"
+            ]
+          },
+          "4": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "D",
+              "C",
+              "D"
+            ]
+          },
+          "5": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "C",
+              "B"
+            ]
+          },
+          "6": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "D",
+              "A"
+            ]
+          },
+          "7": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "D",
+              "C",
+              "B"
+            ]
+          }
+        }
+      }
+    },
+    "Money matters": {
+      "5-4 Listen to understand": {
+        "News report 1": {
+          "News report 1": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "D"
+            ]
+          }
+        },
+        "News report 2": {
+          "News report 2": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "D"
+            ]
+          }
+        },
+        "News report 3": {
+          "News report 3": {
+            "type": "single_choice",
+            "answers": [
+              "A",
+              "B",
+              "C"
+            ]
+          }
+        }
+      },
+      "5-5 Listen to communicate": {
+        "Conversation 1": {
+          "Conversation 1-1": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "C",
+              "B",
+              "C"
+            ]
+          },
+          "Conversation 1-2": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "A",
+              "B",
+              "A"
+            ]
+          }
+        },
+        "Conversation 2": {
+          "Conversation 2-1": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "A",
+              "B",
+              "B"
+            ]
+          }
+        },
+        "Act-out": {
+          "Try it out": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "A",
+              "B",
+              "B",
+              "B"
+            ]
+          }
+        }
+      },
+      "5-6 Listen to share": {
+        "Passage 1": {
+          "Passage 1-2": {
+            "type": "single_choice",
+            "answers": [
+              "A",
+              "C",
+              "D",
+              "C"
+            ]
+          },
+          "Passage 1-3": {
+            "type": "fill_in_the_blank",
+            "answers": [
+              "hurts",
+              "power",
+              "embarrassed",
+              "ashamed",
+              "spoil"
+            ]
+          }
+        },
+        "Passage 2": {
+          "Passage 2-2": {
+            "type": "single_choice",
+            "answers": [
+              "A",
+              "B",
+              "B"
+            ]
+          }
+        }
+      },
+      "5-8 View the world": {
+        "View the world": {
+          "Activity 1": {
+            "type": "fill_in_the_blank",
+            "answers": [
+              "spends",
+              "funny",
+              "top to bottom",
+              "ordered",
+              "frightening",
+              "serious and profound",
+              "lack of interest",
+              "paying it off"
+            ]
+          }
+        }
+      },
+      "5-9 Further listening": {
+        "News report": {
+          "News report": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "B",
+              "D"
+            ]
+          }
+        },
+        "Conversation": {
+          "Conversation": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "B",
+              "C",
+              "C"
+            ]
+          }
+        },
+        "Passage": {
+          "Passage": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "D",
+              "C"
+            ]
+          }
+        }
+      }
+    },
+    "Do more with less": {
+      "6-4 Listen to understand": {
+        "News report 1": {
+          "News report 1": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "C"
+            ]
+          }
+        },
+        "News report 2": {
+          "News report 2": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "B"
+            ]
+          }
+        },
+        "News report 3": {
+          "News report 3": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "D",
+              "A"
+            ]
+          }
+        }
+      },
+      "6-5 Listen to communicate": {
+        "Conversation 1": {
+          "Conversation 1-1": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "D",
+              "C"
+            ]
+          },
+          "Conversation 1-2": {
+            "type": "single_choice",
+            "answers": [
+              "A",
+              "A",
+              "B",
+              "B",
+              "A"
+            ]
+          }
+        },
+        "Conversation 2": {
+          "Conversation 2-1": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "A",
+              "C",
+              "B"
+            ]
+          },
+          "Conversation 2-2": {
+            "type": "fill_in_the_blank",
+            "answers": [
+              "defined as",
+              "tough",
+              "consequences",
+              "stressful",
+              "pros and cons",
+              "ease tension"
+            ]
+          }
+        },
+        "Act-out": {
+          "Try it out": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "A",
+              "C",
+              "A"
+            ]
+          }
+        }
+      },
+      "6-6 Listen to share": {
+        "Passage 1": {
+          "Passage 1-2": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "D",
+              "B",
+              "C"
+            ]
+          }
+        },
+        "Passage 2": {
+          "Passage 2-2": {
+            "type": "single_choice",
+            "answers": [
+              "A",
+              "D",
+              "D"
+            ]
+          },
+          "Passage 2-3": {
+            "type": "fill_in_the_blank",
+            "answers": [
+              "independently",
+              "contrast",
+              "methods and materials",
+              "surprisingly",
+              "freedom",
+              "significance and beauty"
+            ]
+          }
+        }
+      },
+      "6-8 View the world": {
+        "View the world": {
+          "Activity 1": {
+            "type": "fill_in_the_blank",
+            "answers": [
+              "highly appreciated",
+              "gaps",
+              "a realistic manner",
+              "spirit",
+              "imagination",
+              "their own",
+              "unique",
+              "art form"
+            ]
+          }
+        }
+      },
+      "6-9 Further listening": {
+        "News report": {
+          "News report": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "C"
+            ]
+          }
+        },
+        "Conversation": {
+          "Conversation": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "A",
+              "B",
+              "A"
+            ]
+          }
+        },
+        "Passage": {
+          "Passage": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "D",
+              "B"
+            ]
+          }
+        }
+      }
+    },
+    "It's time to fall in love": {
+      "7-4 Listen to understand": {
+        "News report 1": {
+          "News report 1": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "D"
+            ]
+          }
+        },
+        "News report 2": {
+          "News report 2": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "D"
+            ]
+          }
+        },
+        "News report 3": {
+          "News report 3": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "B",
+              "B"
+            ]
+          }
+        }
+      },
+      "7-5 Listen to communicate": {
+        "Conversation 1": {
+          "Conversation 1-1": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "A",
+              "D",
+              "C"
+            ]
+          },
+          "Conversation 1-2": {
+            "type": "fill_in_the_blank",
+            "answers": [
+              "well prepared",
+              "familiar with",
+              "eye contact",
+              "blowing it",
+              "next opportunity"
+            ]
+          }
+        },
+        "Conversation 2": {
+          "Conversation 2-1": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "D",
+              "A",
+              "A"
+            ]
+          },
+          "Conversation 2-2": {
+            "type": "fill_in_the_blank",
+            "answers": [
+              "relationships",
+              "exciting",
+              "a crush",
+              "maintaining",
+              "unnecessary fights",
+              "handle"
+            ]
+          }
+        },
+        "Act-out": {
+          "Try it out": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "A",
+              "B",
+              "A"
+            ]
+          }
+        }
+      },
+      "7-6 Listen to share": {
+        "Passage 1": {
+          "Passage 1-2": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "C",
+              "D",
+              "D"
+            ]
+          }
+        },
+        "Passage 2": {
+          "Passage 2-2": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "D",
+              "D"
+            ]
+          },
+          "Passage 2-3": {
+            "type": "fill_in_the_blank",
+            "answers": [
+              "wonderful",
+              "as a result of",
+              "painful",
+              "leads to",
+              "speak up"
+            ]
+          }
+        }
+      },
+      "7-8 View the world": {
+        "View the world": {
+          "Activity 1": {
+            "type": "fill_in_the_blank",
+            "answers": [
+              "before yourself",
+              "overcoming",
+              "innermost",
+              "pure",
+              "holding",
+              "care about"
+            ]
+          }
+        }
+      },
+      "7-9 Further listening": {
+        "News report": {
+          "News report": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "B"
+            ]
+          }
+        },
+        "Conversation": {
+          "Conversation": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "C",
+              "D"
+            ]
+          }
+        },
+        "Passage": {
+          "Passage": {
+            "type": "single_choice",
+            "answers": [
+              "A",
+              "A",
+              "D"
+            ]
+          }
+        }
+      }
+    },
+    "Animals on the human planet": {
+      "8-4 Listen to understand": {
+        "News report 1": {
+          "News report 1": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "D"
+            ]
+          }
+        },
+        "News report 2": {
+          "News report 2": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "C"
+            ]
+          }
+        },
+        "News report 3": {
+          "News report 3": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "C",
+              "A"
+            ]
+          }
+        }
+      },
+      "8-5 Listen to communicate": {
+        "Conversation 1": {
+          "Conversation 1-1": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "B",
+              "D",
+              "C"
+            ]
+          },
+          "Conversation 1-2": {
+            "type": "fill_in_the_blank",
+            "answers": [
+              "dogs and cats",
+              "vegetarian",
+              "pigeons",
+              "unrealistic"
+            ]
+          }
+        },
+        "Conversation 2": {
+          "Conversation 2-1": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "D",
+              "D",
+              "C"
+            ]
+          }
+        },
+        "Act-out": {
+          "Try it out": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "A",
+              "D",
+              "C",
+              "B",
+              "C"
+            ]
+          }
+        }
+      },
+      "8-6 Listen to share": {
+        "Passage 1": {
+          "Passage 1-2": {
+            "type": "single_choice",
+            "answers": [
+              "A",
+              "B",
+              "B",
+              "A"
+            ]
+          },
+          "Passage 1-3": {
+            "type": "fill_in_the_blank",
+            "answers": [
+              "the owner",
+              "artistic choices",
+              "2,000",
+              "equipment",
+              "The monkey",
+              "non-human beings"
+            ]
+          }
+        },
+        "Passage 2": {
+          "Passage 2-2": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "C",
+              "D"
+            ]
+          }
+        }
+      },
+      "8-8 View the world": {
+        "View the world": {
+          "Activity 1": {
+            "type": "fill_in_the_blank",
+            "answers": [
+              "appreciated",
+              "clues",
+              "persistent with",
+              "helped out",
+              "killer",
+              "monitor",
+              "uneasy",
+              "anxious",
+              "significantly",
+              "decrease"
+            ]
+          }
+        }
+      },
+      "8-9 Further listening": {
+        "News report": {
+          "News report": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "B",
+              "D"
+            ]
+          }
+        },
+        "Conversation": {
+          "Conversation": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "B",
+              "A",
+              "C"
+            ]
+          }
+        },
+        "Passage": {
+          "Passage": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "C",
+              "C"
+            ]
+          }
+        }
+      }
+    },
+    "Final": {
+      "Listening comprehension": {
+        "Listening comprehension": {
+          "0": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "B"
+            ]
+          },
+          "1": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "B",
+              "A"
+            ]
+          },
+          "2": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "C"
+            ]
+          },
+          "3": {
+            "type": "single_choice",
+            "answers": [
+              "C",
+              "D",
+              "C",
+              "A"
+            ]
+          },
+          "4": {
+            "type": "single_choice",
+            "answers": [
+              "A",
+              "B",
+              "D",
+              "A"
+            ]
+          },
+          "5": {
+            "type": "single_choice",
+            "answers": [
+              "B",
+              "D",
+              "C"
+            ]
+          },
+          "6": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "C",
+              "C"
+            ]
+          },
+          "7": {
+            "type": "single_choice",
+            "answers": [
+              "D",
+              "D",
+              "D",
+              "C"
+            ]
+          }
+        }
+      }
+    }
   }
 }
