@@ -429,6 +429,88 @@ async def run_manual_debug_mode(browser_service: DriverService, ai_service: AISe
        await run_strategy_on_current_page(browser_service, ai_service, cache_service)
        logger.always_print("-" * 20)
 
+async def run_study_time_mode(browser_service: DriverService):
+   """进入一个练习页并保活，用于累计课程学习时长。"""
+   config.IS_AUTO_MODE = False
+   logger.always_print("已进入刷时长模式。程序会进入一个练习页并持续处理长时间未操作弹窗。")
+
+   courses = await browser_service.get_course_list()
+   if not courses:
+       logger.error("未能获取到任何课程，无法进入刷时长模式。")
+       return
+
+   logger.always_print("检测到以下课程：")
+   for i, name in enumerate(courses):
+       logger.always_print(f"[{i + 1}] {name}")
+
+   selected_index = 0
+   if len(courses) > 1:
+       choice = -1
+       while choice < 0 or choice >= len(courses):
+           try:
+               user_input = await asyncio.to_thread(input, f"请输入要刷时长的课程编号 (1-{len(courses)}): ")
+               choice = int(user_input) - 1
+               if choice < 0 or choice >= len(courses):
+                   logger.warning("输入无效，请输入列表中的编号。")
+           except ValueError:
+               logger.warning("输入无效，请输入一个数字。")
+       selected_index = choice
+   else:
+       logger.info("检测到只有一门课程，已自动选择。")
+
+   await browser_service.select_course_by_index(selected_index)
+   current_course_url = browser_service.page.url
+
+   original_process_only_incomplete = config.PROCESS_ONLY_INCOMPLETE_TASKS
+   config.PROCESS_ONLY_INCOMPLETE_TASKS = False
+   try:
+       candidate_tasks = await browser_service.get_pending_tasks()
+   finally:
+       config.PROCESS_ONLY_INCOMPLETE_TASKS = original_process_only_incomplete
+
+   if not candidate_tasks:
+       logger.error("未找到可进入的必修任务，无法刷时长。")
+       return
+
+   selected_task = None
+   fallback_task = None
+   for task in candidate_tasks:
+       if fallback_task is None:
+           fallback_task = task
+
+       try:
+           logger.info(f"尝试进入刷时长候选任务：[单元 {task['unit_name']}] - {task['task_name']}")
+           await browser_service.navigate_to_task(current_course_url, task["unit_index"], task["task_index"])
+           if await browser_service.current_page_has_reply():
+               selected_task = task
+               logger.success("已找到带 has-reply 作答区的练习页，将在此页面保活。")
+               break
+
+           logger.info("当前任务页不是 has-reply 类型，继续寻找下一个候选任务。")
+       except Exception as e:
+           logger.warning(f"进入候选任务失败，继续尝试下一个: {e}")
+
+   if selected_task is None:
+       selected_task = fallback_task
+       logger.warning("未找到 has-reply 类型练习页，将进入第一个可用任务页保活。")
+       await browser_service.navigate_to_task(current_course_url, selected_task["unit_index"], selected_task["task_index"])
+
+   logger.always_print(
+       f"刷时长页面已就绪：[单元 {selected_task['unit_name']}] - {selected_task['task_name']}。"
+   )
+   logger.always_print("保持此程序运行即可；需要结束时按 Ctrl+C 或直接关闭程序。")
+
+   heartbeat_count = 0
+   while True:
+       clicked = await browser_service.handle_idle_notice()
+       heartbeat_count += 1
+       if clicked:
+           logger.info("保活弹窗已处理，继续挂时长。")
+       elif heartbeat_count % 20 == 0:
+           logger.info("刷时长模式运行中，未检测到长时间未操作弹窗。")
+
+       await asyncio.sleep(30)
+
 async def main():
    """程序主入口，提供模式选择。"""
    # 启动前检查并获取凭据
@@ -451,7 +533,8 @@ async def main():
            logger.always_print("  [1] 全自动模式 (扫描并完成所有任务)")
            logger.always_print("  [2] 手动调试模式 (针对特定页面进行调试)")
            logger.always_print("  [3] 快速缓存模式 (仅为客观题生成缓存)")
-           logger.always_print("  [4] 退出程序")
+           logger.always_print("  [4] 刷时长模式 (进入练习页并自动处理长时间未操作弹窗)")
+           logger.always_print("  [5] 退出程序")
            logger.always_print("="*30)
            mode = await asyncio.to_thread(input, "请输入模式编号: ")
 
@@ -469,9 +552,11 @@ async def main():
                config.FAST_CACHE_MODE = False
                config.PROCESS_ONLY_INCOMPLETE_TASKS = True
            elif mode == '4':
+               await run_study_time_mode(browser_service)
+           elif mode == '5':
                break
            else:
-               logger.warning("输入无效，请输入 1, 2, 或 3。")
+               logger.warning("输入无效，请输入 1, 2, 3, 4 或 5。")
 
        logger.always_print("程序已结束。")
 

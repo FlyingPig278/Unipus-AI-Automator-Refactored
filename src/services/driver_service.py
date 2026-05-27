@@ -585,6 +585,8 @@ class DriverService:
     
     async def handle_common_popups(self):
         """处理进入任务后常见的弹窗，采用短超时优化。"""
+        await self.handle_idle_notice()
+
         # 1. 快速处理“鼠标取词”引导 (如果存在)
         try:
             # 使用非常短的超时，如果弹窗在0.5秒内没出现，就立即跳过
@@ -599,6 +601,31 @@ class DriverService:
             logger.info("已关闭“任务信息”等弹窗。")
         except PlaywrightError:
             pass
+
+    async def handle_idle_notice(self) -> bool:
+        """处理长时间未操作后的继续使用弹窗。"""
+        try:
+            notice_locator = self.page.locator("div:has-text('由于你长时间未操作，请点确定继续使用。')").last
+            confirm_button = notice_locator.locator("button:has-text('确定'), button[id^='_mask_notice_id_']").first
+            if await confirm_button.is_visible(timeout=1000):
+                await confirm_button.click()
+                logger.info("已点击长时间未操作提示弹窗的“确定”。")
+                return True
+        except PlaywrightError:
+            pass
+        except Exception as e:
+            logger.warning(f"处理长时间未操作提示弹窗时发生异常: {e}")
+        return False
+
+    async def current_page_has_reply(self) -> bool:
+        """判断当前任务页是否带有 has-reply 作答区。"""
+        try:
+            container = self.page.locator(".layoutBody-container").first
+            await container.wait_for(state="attached", timeout=3000)
+            class_attr = await container.get_attribute("class") or ""
+            return "has-reply" in class_attr
+        except Exception:
+            return False
 			
             
     async def handle_submission_confirmation(self):
