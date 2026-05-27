@@ -80,19 +80,16 @@ if errorlevel 1 (
 REM --- Get Previous Tag ---
 set "PREVIOUS_TAG="
 set "TAG_AVAILABLE=0"
+set "CURRENT_TAG=v%VERSION%"
 
 REM Check if any tags exist
 git tag 2>nul | findstr . >nul && set "TAG_AVAILABLE=1"
 
 if !TAG_AVAILABLE!==1 (
-    REM Get the latest tag
-    for /f "delims=" %%i in ('git describe --tags --abbrev=0') do set "PREVIOUS_TAG=%%i"
-
-    REM Fallback if git describe fails
-    if "%PREVIOUS_TAG%"=="" (
-        for /f "delims=" %%i in ('git tag --sort=-v:refname') do (
-            if not defined PREVIOUS_TAG set "PREVIOUS_TAG=%%i"
-        )
+    REM Get the latest tag before the current release tag. If v%VERSION% already
+    REM exists, skip it so the update package is built from the previous version.
+    for /f "delims=" %%i in ('git tag --sort=-v:refname') do (
+        if not defined PREVIOUS_TAG if not "%%i"=="%CURRENT_TAG%" set "PREVIOUS_TAG=%%i"
     )
 ) else (
     echo [INFO] No Git tags found in repository.
