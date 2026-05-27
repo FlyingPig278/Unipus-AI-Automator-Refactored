@@ -39,6 +39,12 @@ DIAGNOSTICS_DIR = os.getenv("DIAGNOSTICS_DIR", ".diagnostics")
 # Chromium 假设备和页面级兜底流可以让录音链路继续产生二进制音频包。
 USE_FAKE_MICROPHONE = os.getenv("USE_FAKE_MICROPHONE", "True").lower() == 'true'
 MOCK_MICROPHONE_WHEN_MISSING = os.getenv("MOCK_MICROPHONE_WHEN_MISSING", "True").lower() == 'true'
+BROWSER_CHANNEL = os.getenv("BROWSER_CHANNEL", "msedge").strip().lower()
+BROWSER_FALLBACK_CHANNELS = [
+    channel.strip().lower()
+    for channel in os.getenv("BROWSER_FALLBACK_CHANNELS", "chromium").split(",")
+    if channel.strip()
+]
 
 # --- Resume / task queue cache ---
 REFRESH_TASK_QUEUE = os.getenv("REFRESH_TASK_QUEUE", "False").lower() == 'true'

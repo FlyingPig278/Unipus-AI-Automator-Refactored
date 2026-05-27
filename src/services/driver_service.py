@@ -2,6 +2,8 @@
 import asyncio
 import html
 import json  # 新增导入
+import subprocess
+import sys
 import urllib.parse  # 新增导入
 
 from playwright.async_api import async_playwright, Playwright, Browser, BrowserContext, Page, Locator, Error as PlaywrightError
@@ -43,7 +45,7 @@ class DriverService:
             ])
             logger.info("已启用Chromium假麦克风设备，用于无实体麦克风环境。")
 
-        self.browser = await self.playwright.chromium.launch(headless=headless, args=launch_args)
+        self.browser = await self._launch_browser_with_fallbacks(headless=headless, args=launch_args)
         # 在创建上下文时直接授予麦克风权限
         self.context = await self.browser.new_context(permissions=['microphone'])
         if config.MOCK_MICROPHONE_WHEN_MISSING:
@@ -54,6 +56,68 @@ class DriverService:
         # self.page = await self.browser.new_page()
         self.page.set_default_timeout(30000) # 设置30秒默认超时
         logger.info("Playwright浏览器和新页面已成功启动。")
+
+    async def _launch_browser_with_fallbacks(self, headless: bool, args: list[str]) -> Browser:
+        """按配置顺序启动浏览器，默认优先使用系统 Edge，必要时回退到 Playwright Chromium。"""
+        channels = self._browser_channel_plan()
+        last_error = None
+
+        for channel in channels:
+            try:
+                browser = await self._launch_browser_channel(channel, headless=headless, args=args)
+                logger.info(f"浏览器启动成功，当前通道: {channel}")
+                return browser
+            except Exception as exc:
+                last_error = exc
+                logger.warning(f"浏览器通道 {channel} 启动失败: {exc}")
+
+                if channel == "chromium" and await self._repair_playwright_chromium():
+                    try:
+                        browser = await self._launch_browser_channel(channel, headless=headless, args=args)
+                        logger.info("Playwright Chromium 修复后启动成功。")
+                        return browser
+                    except Exception as retry_exc:
+                        last_error = retry_exc
+                        logger.warning(f"Playwright Chromium 修复后仍启动失败: {retry_exc}")
+
+        raise PlaywrightError(f"所有浏览器通道均启动失败: {last_error}")
+
+    def _browser_channel_plan(self) -> list[str]:
+        channels = [config.BROWSER_CHANNEL, *config.BROWSER_FALLBACK_CHANNELS]
+        normalized = []
+        aliases = {
+            "": "msedge",
+            "edge": "msedge",
+            "microsoft-edge": "msedge",
+            "playwright": "chromium",
+            "bundled": "chromium",
+        }
+
+        for channel in channels:
+            channel = aliases.get(channel, channel)
+            if channel not in normalized:
+                normalized.append(channel)
+
+        return normalized or ["msedge", "chromium"]
+
+    async def _launch_browser_channel(self, channel: str, headless: bool, args: list[str]) -> Browser:
+        if channel == "chromium":
+            return await self.playwright.chromium.launch(headless=headless, args=args)
+
+        return await self.playwright.chromium.launch(channel=channel, headless=headless, args=args)
+
+    async def _repair_playwright_chromium(self) -> bool:
+        logger.info("正在尝试按需修复 Playwright Chromium...")
+        try:
+            result = await asyncio.to_thread(
+                subprocess.run,
+                [sys.executable, "scripts/repair_playwright.py"],
+                check=False,
+            )
+            return result.returncode == 0
+        except Exception as exc:
+            logger.warning(f"按需修复 Playwright Chromium 时发生异常: {exc}")
+            return False
 
     @staticmethod
     def _build_microphone_fallback_script() -> str:

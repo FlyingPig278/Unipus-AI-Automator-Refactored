@@ -29,7 +29,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [1/4] Checking virtual environment...
+echo [1/3] Checking virtual environment...
 if not exist "%VENV_DIR%\Scripts\python.exe" (
     echo       Creating virtual environment: %VENV_DIR%
     python -m venv "%VENV_DIR%"
@@ -46,7 +46,7 @@ set "VENV_PYTHON=%VENV_DIR%\Scripts\python.exe"
 set "VENV_PIP=%VENV_DIR%\Scripts\pip.exe"
 
 echo.
-echo [2/4] Installing/updating Python dependencies...
+echo [2/3] Installing/updating Python dependencies...
 "%VENV_PYTHON%" -m pip install --upgrade pip -i %PYPI_INDEX% --no-warn-script-location
 "%VENV_PIP%" install -r requirements.txt -i %PYPI_INDEX% --upgrade --no-warn-script-location
 if errorlevel 1 (
@@ -57,18 +57,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo [3/4] Checking and repairing Playwright Chromium...
-"%VENV_PYTHON%" scripts\repair_playwright.py
-if errorlevel 1 (
-    echo.
-    echo [ERROR] Browser setup failed after automatic repair.
-    echo        You can delete "%PLAYWRIGHT_BROWSERS_PATH%" and run this script again.
-    pause
-    exit /b 1
-)
-
-echo.
-echo [4/4] Starting application...
+echo [3/3] Starting application...
 echo =================================================================
 echo.
 "%VENV_PYTHON%" main.py

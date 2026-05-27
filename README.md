@@ -63,3 +63,4 @@ For users with an existing Python environment.
 * **API Errors:** Verify your key in the .env file is active and has sufficient balance.  
 * **Path Errors:** Do not move the batch scripts out of the root directory.
 * **Microphone Issues:** The browser starts with a fake microphone by default and falls back to an in-page virtual audio stream when no input device exists. Set `USE_FAKE_MICROPHONE=False` or `MOCK_MICROPHONE_WHEN_MISSING=False` in `.env` only if this interferes with a real microphone setup.
+* **Browser Channel:** The app uses system Microsoft Edge by default (`BROWSER_CHANNEL=msedge`) to avoid downloading a large bundled browser. If Edge is unavailable, it falls back to Playwright Chromium and repairs/downloads it on demand. Set `BROWSER_CHANNEL=chromium` to force the bundled browser.
