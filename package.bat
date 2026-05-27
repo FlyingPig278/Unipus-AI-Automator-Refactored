@@ -16,9 +16,11 @@ set "UPDATE_STAGING_DIR=__temp_update_build"
 set "SOURCE_ARCHIVE=source.zip"
 set "SOURCE_DIFF=diff.patch"
 
-REM --- Get Version from User ---
+REM --- Get Version from argument, VERSION file, or user input ---
 set "VERSION="
-set /p "VERSION=Please enter the version number to package (e.g., 1.2.0): "
+if not "%~1"=="" set "VERSION=%~1"
+if not defined VERSION if exist "VERSION" set /p "VERSION="<"VERSION"
+if not defined VERSION set /p "VERSION=Please enter the version number to package (e.g., 1.4.0): "
 if not defined VERSION (
     echo.
     echo [ERROR] Version number not provided, script will exit.
