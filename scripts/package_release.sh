@@ -112,10 +112,17 @@ else
 
   mapfile -t changed_files < <(git diff --name-only --diff-filter=dACM "$PREVIOUS_TAG"..HEAD)
   for file in "${changed_files[@]}"; do
+    if [[ "$file" == "run.bat" || "$file" == "run-portable.bat" ]]; then
+      echo "       Skipping edition-specific launcher: $file"
+      continue
+    fi
     copy_changed_file "$file" "$UPDATE_DIR"
   done
 
   mapfile -t deleted_files < <(git diff --name-only --diff-filter=D "$PREVIOUS_TAG"..HEAD)
+  if git cat-file -e "$PREVIOUS_TAG:run-portable.bat" 2>/dev/null; then
+    deleted_files+=("run-portable.bat")
+  fi
   if (( ${#deleted_files[@]} > 0 )); then
     printf '%s\n' "${deleted_files[@]}" > "$UPDATE_DIR/files_to_delete.txt"
   fi
@@ -135,6 +142,7 @@ else
       echo "1. IMPORTANT: Back up your existing installation directory first."
       echo "2. If files_to_delete.txt exists in this package, delete all listed files and folders from your installation directory."
       echo "3. Copy all other files and folders from this package into your installation directory, overwriting existing files."
+      echo "4. Launcher scripts are edition-specific and are not included in this generic update package; keep your existing run.bat."
     } > "$UPDATE_DIR/UPDATE_README.txt"
 
     git log "$PREVIOUS_TAG"..HEAD --oneline --no-merges > "$UPDATE_DIR/CHANGELOG.txt"

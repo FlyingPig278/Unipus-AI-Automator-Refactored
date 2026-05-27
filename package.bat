@@ -218,16 +218,22 @@ if "%PREVIOUS_TAG%"=="initial" (
    for /f "delims=" %%f in ('git diff --name-only --diff-filter=dACM %PREVIOUS_TAG%..HEAD') do (
        set "gitpath=%%f"
 
-       REM ** FIX: Convert forward slashes from git path to backslashes for Windows commands **
-       set "winpath=!gitpath:/=\!"
+       if /I "!gitpath!"=="run.bat" (
+           echo        Skipping edition-specific launcher: !gitpath!
+       ) else if /I "!gitpath!"=="run-portable.bat" (
+           echo        Skipping edition-specific launcher: !gitpath!
+       ) else (
+           REM ** FIX: Convert forward slashes from git path to backslashes for Windows commands **
+           set "winpath=!gitpath:/=\!"
 
-       REM Create the directory structure for the file (PowerShell handles both / and \)
-       powershell -Command "New-Item -ItemType Directory -Force -Path (Split-Path -Path '%UPDATE_STAGING_DIR%\!gitpath!' -Parent)" > nul
+           REM Create the directory structure for the file (PowerShell handles both / and \)
+           powershell -Command "New-Item -ItemType Directory -Force -Path (Split-Path -Path '%UPDATE_STAGING_DIR%\!gitpath!' -Parent)" > nul
 
-       REM Copy the file using the corrected Windows-compatible path
-       copy "!winpath!" "%UPDATE_STAGING_DIR%\!winpath!" > nul
+           REM Copy the file using the corrected Windows-compatible path
+           copy "!winpath!" "%UPDATE_STAGING_DIR%\!winpath!" > nul
 
-       set /a ADDED_MODIFIED_COUNT+=1
+           set /a ADDED_MODIFIED_COUNT+=1
+       )
    )
    echo      - Found !ADDED_MODIFIED_COUNT! new/modified files.
 
@@ -238,6 +244,12 @@ if "%PREVIOUS_TAG%"=="initial" (
        echo %%f
        set /a DELETED_COUNT+=1
    )) > "%UPDATE_STAGING_DIR%\files_to_delete.txt"
+
+   git cat-file -e %PREVIOUS_TAG%:run-portable.bat >nul 2>&1
+   if not errorlevel 1 (
+       echo run-portable.bat>> "%UPDATE_STAGING_DIR%\files_to_delete.txt"
+       set /a DELETED_COUNT+=1
+   )
 
    REM If the file is empty because there were no deletions, delete it.
    if !DELETED_COUNT!==0 (
@@ -267,6 +279,7 @@ if "%PREVIOUS_TAG%"=="initial" (
            echo 1. IMPORTANT: Back up your existing installation directory first.
            echo 2. If 'files_to_delete.txt' exists in this package, open it and DELETE all listed files and folders from your installation directory.
            echo 3. Copy all other files and folders from this package into your installation directory, overwriting any existing files.
+           echo 4. Launcher scripts are edition-specific and are not included in this generic update package; keep your existing run.bat.
            echo.
        ) > "%UPDATE_STAGING_DIR%\UPDATE_README.txt"
 
