@@ -140,13 +140,13 @@ REFRESH_TASK_QUEUE="True"
 Windows 环境可运行：
 
 ```bat
-package.bat 1.4.0
+package.bat 1.4.1
 ```
 
 WSL / Linux 环境可运行：
 
 ```bash
-scripts/package_release.sh 1.4.0
+scripts/package_release.sh 1.4.1
 ```
 
 版本号默认读取 `VERSION` 文件。打包脚本会生成：
