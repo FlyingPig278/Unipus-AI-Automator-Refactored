@@ -5,6 +5,14 @@ import os
 # Load environment variables from .env file
 load_dotenv()
 
+
+def _env_int(name: str, default: int) -> int:
+    value = os.getenv(name, str(default))
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
 # --- Credentials and API Keys ---
 USERNAME = os.getenv("U_USERNAME")
 PASSWORD = os.getenv("U_PASSWORD")
@@ -55,6 +63,11 @@ BROWSER_FALLBACK_CHANNELS = [
 # --- Resume / task queue cache ---
 REFRESH_TASK_QUEUE = os.getenv("REFRESH_TASK_QUEUE", "False").lower() == 'true'
 TASK_QUEUE_CACHE_FILE = os.getenv("TASK_QUEUE_CACHE_FILE", ".runtime/task_queues.json")
+
+# --- Study time keepalive ---
+STUDY_TIME_REFRESH_INTERVAL_SECONDS = max(60, _env_int("STUDY_TIME_REFRESH_INTERVAL_SECONDS", 600))
+STUDY_TIME_ACTIVITY_INTERVAL_SECONDS = max(5, _env_int("STUDY_TIME_ACTIVITY_INTERVAL_SECONDS", 30))
+STUDY_TIME_SIMULATE_ACTIVITY = os.getenv("STUDY_TIME_SIMULATE_ACTIVITY", "True").lower() == 'true'
 
 # --- CSS Selectors ---
 # Course Page

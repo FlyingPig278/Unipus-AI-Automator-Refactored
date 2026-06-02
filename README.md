@@ -78,6 +78,13 @@ USE_FAKE_MICROPHONE="True"
 # 页面仍拿不到麦克风时注入虚拟音频流兜底
 MOCK_MICROPHONE_WHEN_MISSING="True"
 
+# 刷时长模式每 10 分钟刷新一次页面，降低登录态失效影响
+STUDY_TIME_REFRESH_INTERVAL_SECONDS="600"
+
+# 刷时长模式每 30 秒处理弹窗并模拟一次轻微前台活动
+STUDY_TIME_ACTIVITY_INTERVAL_SECONDS="30"
+STUDY_TIME_SIMULATE_ACTIVITY="True"
+
 # Whisper 语音识别模型下载目录
 WHISPER_DOWNLOAD_ROOT=".models/whisper"
 ```
@@ -95,7 +102,7 @@ WHISPER_DOWNLOAD_ROOT=".models/whisper"
 1. 全自动模式：扫描课程任务并自动处理。
 2. 手动调试模式：手动进入页面后让程序接管当前题目。
 3. 快速缓存模式：只运行客观题策略，主要用于生成答案缓存。
-4. 刷时长模式：进入一个练习页并持续挂着，自动点击“长时间未操作”弹窗。
+4. 刷时长模式：进入一个练习页并持续挂着，定时刷新页面，自动点击“长时间未操作”弹窗。
 5. 退出程序。
 
 全自动模式会根据账号名和课程名缓存任务队列。中途退出后再次运行，默认会从剩余任务继续；如需重新扫描任务，可在 `.env` 中设置：
@@ -208,4 +215,6 @@ WHISPER_MODEL_URLS="https://example.com/base.pt"
 
 ### 长时间未操作弹窗
 
-刷时长模式会每 30 秒检测一次该弹窗，并自动点击“确定”。
+刷时长模式会按 `STUDY_TIME_ACTIVITY_INTERVAL_SECONDS` 检测该弹窗，并自动点击“确定”。同时会按 `STUDY_TIME_REFRESH_INTERVAL_SECONDS` 刷新页面；如果刷新后跳回登录页，程序会重新登录、重新进入原课程，并跳回刷新前的任务节点。
+
+`STUDY_TIME_SIMULATE_ACTIVITY=True` 时，程序会在浏览器内尝试让页面保持前台状态、移动鼠标到不同角点并触发可见性/鼠标事件。这不是系统级窗口置顶，但可以降低网页侧判断“长时间无操作”的概率。

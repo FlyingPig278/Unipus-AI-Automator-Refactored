@@ -1,6 +1,7 @@
 import asyncio
 import os
 import sys
+import time
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent))
 import src.config as config
@@ -429,10 +430,47 @@ async def run_manual_debug_mode(browser_service: DriverService, ai_service: AISe
        await run_strategy_on_current_page(browser_service, ai_service, cache_service)
        logger.always_print("-" * 20)
 
+async def refresh_study_time_page(
+   browser_service: DriverService,
+   selected_course_index: int,
+   course_url: str,
+   selected_task: dict,
+) -> str:
+   """刷新刷时长页面；若登录态失效，则重新登录并回到原任务。"""
+   logger.info("刷时长模式：正在定时刷新页面以维持登录态...")
+
+   try:
+       await browser_service.page.reload(wait_until="networkidle", timeout=60000)
+   except Exception as e:
+       logger.warning(f"刷新当前页面失败，将尝试恢复到原任务: {e}")
+
+   await asyncio.sleep(1)
+
+   if await browser_service.is_login_page():
+       logger.warning("刷新后检测到已回到登录页，开始重新登录并恢复刷时长节点。")
+       await browser_service.login()
+       await browser_service.select_course_by_index(selected_course_index)
+       course_url = browser_service.page.url
+       await browser_service.navigate_to_task(course_url, selected_task["unit_index"], selected_task["task_index"])
+       logger.success("已重新登录并回到刷时长任务页。")
+       return course_url
+
+   if not await browser_service.is_task_page_loaded():
+       logger.warning("刷新后未检测到任务页，尝试重新进入刷时长任务。")
+       await browser_service.navigate_to_task(course_url, selected_task["unit_index"], selected_task["task_index"])
+   else:
+       await browser_service.handle_common_popups()
+
+   if config.STUDY_TIME_SIMULATE_ACTIVITY:
+       await browser_service.simulate_foreground_activity()
+
+   logger.info("刷时长模式：页面刷新检查完成。")
+   return course_url
+
 async def run_study_time_mode(browser_service: DriverService):
    """进入一个练习页并保活，用于累计课程学习时长。"""
    config.IS_AUTO_MODE = False
-   logger.always_print("已进入刷时长模式。程序会进入一个练习页并持续处理长时间未操作弹窗。")
+   logger.always_print("已进入刷时长模式。程序会进入一个练习页，定时刷新并处理长时间未操作弹窗。")
 
    courses = await browser_service.get_course_list()
    if not courses:
@@ -498,18 +536,46 @@ async def run_study_time_mode(browser_service: DriverService):
    logger.always_print(
        f"刷时长页面已就绪：[单元 {selected_task['unit_name']}] - {selected_task['task_name']}。"
    )
+   logger.always_print(
+       f"页面将约每 {config.STUDY_TIME_REFRESH_INTERVAL_SECONDS} 秒刷新一次；每 {config.STUDY_TIME_ACTIVITY_INTERVAL_SECONDS} 秒执行一次保活检查。"
+   )
    logger.always_print("保持此程序运行即可；需要结束时按 Ctrl+C 或直接关闭程序。")
 
    heartbeat_count = 0
+   last_refresh_at = time.monotonic()
    while True:
-       clicked = await browser_service.handle_idle_notice()
-       heartbeat_count += 1
-       if clicked:
-           logger.info("保活弹窗已处理，继续挂时长。")
-       elif heartbeat_count % 20 == 0:
-           logger.info("刷时长模式运行中，未检测到长时间未操作弹窗。")
+       try:
+           if time.monotonic() - last_refresh_at >= config.STUDY_TIME_REFRESH_INTERVAL_SECONDS:
+               current_course_url = await refresh_study_time_page(
+                   browser_service,
+                   selected_index,
+                   current_course_url,
+                   selected_task,
+               )
+               last_refresh_at = time.monotonic()
 
-       await asyncio.sleep(30)
+           clicked = await browser_service.handle_idle_notice()
+           if config.STUDY_TIME_SIMULATE_ACTIVITY:
+               await browser_service.simulate_foreground_activity(heartbeat_count)
+
+           heartbeat_count += 1
+           if clicked:
+               logger.info("保活弹窗已处理，继续挂时长。")
+           elif heartbeat_count % 20 == 0:
+               logger.info("刷时长模式运行中，未检测到长时间未操作弹窗。")
+       except Exception as e:
+           logger.warning(f"刷时长保活循环发生异常，将尝试重新进入目标任务: {e}")
+           try:
+               if await browser_service.is_login_page():
+                   await browser_service.login()
+                   await browser_service.select_course_by_index(selected_index)
+                   current_course_url = browser_service.page.url
+               await browser_service.navigate_to_task(current_course_url, selected_task["unit_index"], selected_task["task_index"])
+               last_refresh_at = time.monotonic()
+           except Exception as recover_error:
+               logger.error(f"刷时长页面恢复失败，下一轮将继续尝试: {recover_error}")
+
+       await asyncio.sleep(config.STUDY_TIME_ACTIVITY_INTERVAL_SECONDS)
 
 async def main():
    """程序主入口，提供模式选择。"""

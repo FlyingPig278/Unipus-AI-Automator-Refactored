@@ -681,6 +681,82 @@ class DriverService:
             logger.warning(f"处理长时间未操作提示弹窗时发生异常: {e}")
         return False
 
+    async def is_login_page(self) -> bool:
+        """判断当前页面是否已经回到登录表单。"""
+        try:
+            login_button = self.page.get_by_role("button", name="登录").first
+            username_input = self.page.get_by_role("textbox", name="手机号/邮箱/用户名").first
+            return await login_button.is_visible(timeout=1000) and await username_input.is_visible(timeout=1000)
+        except Exception:
+            return False
+
+    async def is_task_page_loaded(self) -> bool:
+        """判断当前页面是否仍在任务/题目页。"""
+        try:
+            marker = self.page.locator(config.QUESTION_LOADING_MARKER).first
+            await marker.wait_for(state="attached", timeout=3000)
+            return True
+        except Exception:
+            return await self.current_page_has_reply()
+
+    async def simulate_foreground_activity(self, step: int = 0):
+        """
+        在浏览器层模拟页面仍处于前台且有轻微鼠标活动。
+
+        这不能把 Windows 窗口设置成系统级 always-on-top，但可以降低网页侧通过
+        visibility/focus/mousemove 判断“长时间无操作”的概率。
+        """
+        if not self.page:
+            return
+
+        try:
+            await self.page.bring_to_front()
+        except Exception as e:
+            logger.debug(f"页面置前失败，跳过: {e}")
+
+        try:
+            viewport = self.page.viewport_size or {"width": 1280, "height": 720}
+            width = max(viewport.get("width", 1280), 2)
+            height = max(viewport.get("height", 720), 2)
+            padding = 12
+            points = [
+                (padding, padding),
+                (width - padding, padding),
+                (width - padding, height - padding),
+                (padding, height - padding),
+                (width // 2, height // 2),
+            ]
+            x, y = points[step % len(points)]
+            await self.page.mouse.move(x, y, steps=8)
+            await self.page.evaluate(
+                """({x, y}) => {
+                    try { window.focus(); } catch (_) {}
+                    for (const [target, type] of [
+                        [document, 'visibilitychange'],
+                        [window, 'focus'],
+                        [document, 'mousemove'],
+                        [document, 'mouseenter'],
+                    ]) {
+                        try {
+                            const event = type.startsWith('mouse')
+                                ? new MouseEvent(type, { bubbles: true, clientX: x, clientY: y })
+                                : new Event(type, { bubbles: true });
+                            target.dispatchEvent(event);
+                        } catch (_) {}
+                    }
+                    try {
+                        if (!window.__aiVisibilityPatched) {
+                            window.__aiVisibilityPatched = true;
+                            Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+                            Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+                        }
+                    } catch (_) {}
+                }""",
+                {"x": x, "y": y},
+            )
+        except Exception as e:
+            logger.debug(f"模拟前台活动失败，跳过: {e}")
+
     async def current_page_has_reply(self) -> bool:
         """判断当前任务页是否带有 has-reply 作答区。"""
         try:
