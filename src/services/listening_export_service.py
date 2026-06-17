@@ -61,32 +61,65 @@ class ListeningExportService:
             "",
         ]
 
-        for index, entry in enumerate(entries, start=1):
-            breadcrumb = " > ".join(entry.breadcrumb)
+        for group_index, group_entries in enumerate(ListeningExportService._group_entries(entries)):
+            if group_index > 0:
+                lines.extend(["---", ""])
+
+            first_entry = group_entries[0]
+            breadcrumb = " > ".join(first_entry.breadcrumb)
             lines.extend(
                 [
-                    f"## {index}. {breadcrumb}",
-                    "",
-                    f"- 题号：{entry.question_index}",
-                    f"- 音频：{entry.media_url or '未找到音频地址'}",
-                    f"- 答案：{entry.answer or UNCACHED_ANSWER}",
-                    "",
-                    "### 听力原文",
-                    "",
-                    entry.transcript.strip() or "未提取到听力原文。",
-                    "",
-                    "### 题目",
-                    "",
-                    entry.question.strip() or "未提取到题干。",
-                    "",
-                    "### 选项",
+                    f"## {breadcrumb}",
                     "",
                 ]
             )
-            lines.extend(option.strip() for option in entry.options if option.strip())
-            lines.append("")
+            if first_entry.media_url:
+                lines.extend([f"音频：[打开音频]({first_entry.media_url})", ""])
+
+            lines.extend(
+                [
+                    "### 听力文本",
+                    "",
+                    first_entry.transcript.strip() or "未提取到听力文本。",
+                    "",
+                    "### 题目",
+                    "",
+                ]
+            )
+
+            for question_number, entry in enumerate(group_entries, start=1):
+                answer = entry.answer.strip() if entry.answer else UNCACHED_ANSWER
+                question = entry.question.strip() or "未提取到题干。"
+                lines.append(f"{question_number}. ( {answer} ) {question}")
+                lines.extend(f"   {option.strip()}" for option in entry.options if option.strip())
+                lines.append("")
 
         return "\n".join(lines).rstrip() + "\n"
+
+    @staticmethod
+    def _group_entries(entries: list[ListeningExportEntry]) -> list[list[ListeningExportEntry]]:
+        groups: list[list[ListeningExportEntry]] = []
+        current_group: list[ListeningExportEntry] = []
+        current_key: tuple[tuple[str, ...], str, str] | None = None
+
+        for entry in entries:
+            key = (
+                tuple(entry.breadcrumb),
+                entry.media_url.strip(),
+                entry.transcript.strip(),
+            )
+            if current_key != key:
+                if current_group:
+                    groups.append(current_group)
+                current_group = [entry]
+                current_key = key
+            else:
+                current_group.append(entry)
+
+        if current_group:
+            groups.append(current_group)
+
+        return groups
 
     @staticmethod
     def write_markdown(path: str | Path, entries: list[ListeningExportEntry]) -> None:
