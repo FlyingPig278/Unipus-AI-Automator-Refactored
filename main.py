@@ -10,6 +10,7 @@ from src.services.driver_service import DriverService, RateLimitException, Inval
 from src.services.ai_service import AIService
 from src.services.cache_service import CacheService
 from src.services.diagnostic_service import DiagnosticService
+from src.services.listening_export_service import ListeningExportService
 from src.services.task_progress_service import TaskProgressService
 from src.strategy_registry import filter_available_strategies
 from src.utils import logger, console
@@ -583,6 +584,91 @@ async def run_study_time_mode(browser_service: DriverService):
 
        await asyncio.sleep(config.STUDY_TIME_ACTIVITY_INTERVAL_SECONDS)
 
+async def run_listening_export_mode(browser_service: DriverService, ai_service: AIService, cache_service: CacheService):
+   """遍历所有必修任务，导出音频听力选择题文本、选项和缓存答案。"""
+   config.IS_AUTO_MODE = False
+   logger.always_print("已进入听力保存模式。程序会遍历所有必修任务，只保存音频选择题，不提交答案。")
+
+   courses = await browser_service.get_course_list()
+   if not courses:
+       logger.error("未能获取到任何课程，无法导出听力题。")
+       return
+
+   logger.always_print("检测到以下课程：")
+   for i, name in enumerate(courses):
+       logger.always_print(f"[{i + 1}] {name}")
+
+   selected_index = 0
+   if len(courses) > 1:
+       choice = -1
+       while choice < 0 or choice >= len(courses):
+           try:
+               user_input = await asyncio.to_thread(input, f"请输入要导出听力题的课程编号 (1-{len(courses)}): ")
+               choice = int(user_input) - 1
+               if choice < 0 or choice >= len(courses):
+                   logger.warning("输入无效，请输入列表中的编号。")
+           except ValueError:
+               logger.warning("输入无效，请输入一个数字。")
+       selected_index = choice
+   else:
+       logger.info("检测到只有一门课程，已自动选择。")
+
+   await browser_service.select_course_by_index(selected_index)
+   current_course_url = browser_service.page.url
+
+   original_process_only_incomplete = config.PROCESS_ONLY_INCOMPLETE_TASKS
+   config.PROCESS_ONLY_INCOMPLETE_TASKS = False
+   try:
+       candidate_tasks = await browser_service.get_pending_tasks()
+   finally:
+       config.PROCESS_ONLY_INCOMPLETE_TASKS = original_process_only_incomplete
+
+   if not candidate_tasks:
+       logger.error("未找到可遍历的必修任务，无法导出听力题。")
+       return
+
+   export_service = ListeningExportService(browser_service, ai_service, cache_service)
+   all_entries = []
+   output_file = config.LISTENING_EXPORT_FILE
+
+   progress_columns = [
+       TextColumn("[progress.description]{task.description}"),
+       BarColumn(),
+       MofNCompleteColumn(),
+       TextColumn("•"),
+       TimeElapsedColumn(),
+   ]
+
+   with Progress(*progress_columns, console=console, transient=True) as progress:
+       for task in progress.track(candidate_tasks, description="正在导出听力题..."):
+           progress.log(f"扫描中: [单元 {task['unit_name']}] - {task['task_name']}")
+           try:
+               await browser_service.navigate_to_task(task["course_url"], task["unit_index"], task["task_index"])
+               task_entries = await export_service.collect_current_task_entries()
+               if task_entries:
+                   all_entries.extend(task_entries)
+                   ListeningExportService.write_markdown(output_file, all_entries)
+                   progress.log(f"已累计导出 {len(all_entries)} 道听力题。")
+               await asyncio.sleep(1)
+           except RateLimitException:
+               raise
+           except Exception as e:
+               logger.error(f"导出当前任务失败，已跳过: {e}")
+               await DiagnosticService.capture_page_failure(
+                   browser_service,
+                   "listening_export_task_failed",
+                   e,
+                   {
+                       "unit_name": task.get("unit_name"),
+                       "task_name": task.get("task_name"),
+                       "unit_index": task.get("unit_index"),
+                       "task_index": task.get("task_index"),
+                   },
+               )
+
+   ListeningExportService.write_markdown(output_file, all_entries)
+   logger.always_print(f"听力保存模式结束：共导出 {len(all_entries)} 道题，文件位置：{output_file}")
+
 async def main():
    """程序主入口，提供模式选择。"""
    # 启动前检查并获取凭据
@@ -606,7 +692,8 @@ async def main():
            logger.always_print("  [2] 手动调试模式 (针对特定页面进行调试)")
            logger.always_print("  [3] 快速缓存模式 (仅为客观题生成缓存)")
            logger.always_print("  [4] 刷时长模式 (进入练习页并自动处理长时间未操作弹窗)")
-           logger.always_print("  [5] 退出程序")
+           logger.always_print("  [5] 听力保存模式 (导出音频听力选择题文档)")
+           logger.always_print("  [6] 退出程序")
            logger.always_print("="*30)
            mode = await asyncio.to_thread(input, "请输入模式编号: ")
 
@@ -626,9 +713,11 @@ async def main():
            elif mode == '4':
                await run_study_time_mode(browser_service)
            elif mode == '5':
+               await run_listening_export_mode(browser_service, ai_service, cache_service)
+           elif mode == '6':
                break
            else:
-               logger.warning("输入无效，请输入 1, 2, 3, 4 或 5。")
+               logger.warning("输入无效，请输入 1, 2, 3, 4, 5 或 6。")
 
        logger.always_print("程序已结束。")
 

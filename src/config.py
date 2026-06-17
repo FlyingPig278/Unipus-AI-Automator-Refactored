@@ -72,6 +72,9 @@ REFRESH_TASK_QUEUE = _env_bool("REFRESH_TASK_QUEUE", False)
 REFRESH_TASK_QUEUE_AUTO_RESET = reset_env_flag_if_true(".env", "REFRESH_TASK_QUEUE") if REFRESH_TASK_QUEUE else False
 TASK_QUEUE_CACHE_FILE = os.getenv("TASK_QUEUE_CACHE_FILE", ".runtime/task_queues.json")
 
+# --- Listening export mode ---
+LISTENING_EXPORT_FILE = os.getenv("LISTENING_EXPORT_FILE", ".runtime/listening_export.md")
+
 # --- Study time keepalive ---
 STUDY_TIME_REFRESH_INTERVAL_SECONDS = max(60, _env_int("STUDY_TIME_REFRESH_INTERVAL_SECONDS", 600))
 STUDY_TIME_ACTIVITY_INTERVAL_SECONDS = max(5, _env_int("STUDY_TIME_ACTIVITY_INTERVAL_SECONDS", 30))

@@ -103,13 +103,30 @@ WHISPER_DOWNLOAD_ROOT=".models/whisper"
 2. 手动调试模式：手动进入页面后让程序接管当前题目。
 3. 快速缓存模式：只运行客观题策略，主要用于生成答案缓存。
 4. 刷时长模式：进入一个练习页并持续挂着，定时刷新页面，自动点击“长时间未操作”弹窗。
-5. 退出程序。
+5. 听力保存模式：遍历所有必修任务，导出音频听力选择题的听力原文、题干、选项和缓存答案。
+6. 退出程序。
 
 全自动模式会根据账号名和课程名缓存任务队列。中途退出后再次运行，默认会从剩余任务继续；如需重新扫描任务，可在 `.env` 中设置：
 
 ```env
 REFRESH_TASK_QUEUE="True"
 ```
+
+程序读取到 `REFRESH_TASK_QUEUE=True` 后，会在本次启动继续刷新任务队列，并自动把 `.env` 中的该值改回 `False`，避免下次启动误刷新。
+
+如果不想自动处理不计入总分的文本简答题和语音简答题，可在 `.env` 中设置：
+
+```env
+SKIP_SHORT_ANSWER_QUESTIONS="True"
+```
+
+听力保存模式默认把文档写入 `.runtime/listening_export.md`。如需改路径，可在 `.env` 中设置：
+
+```env
+LISTENING_EXPORT_FILE=".runtime/listening_export.md"
+```
+
+该模式只处理音频材料的选择题，不会提交答案；答案优先从 `answer_cache.json` 读取，未命中缓存时会在文档中标记为“未缓存”。
 
 登录流程会自动填写账号密码并提交。如果平台要求验证码，程序会停下来等待你在浏览器中手动输入验证码并点击登录，最长等待 5 分钟；登录成功后会自动关闭提示弹窗并进入“我的课程”继续执行。
 
@@ -136,6 +153,7 @@ REFRESH_TASK_QUEUE="True"
 - `.logs/`：运行日志。
 - `.diagnostics/`：失败诊断快照。
 - `.runtime/`：断点续传任务队列。
+- `.runtime/listening_export.md`：听力保存模式导出的复习文档。
 - `.models/`：Piper TTS 模型。
 - `.playwright-browsers/` 或 `python-embed/browsers/`：回退到 Playwright Chromium 时的浏览器文件。
 - `answer_cache.json`：答案缓存。
