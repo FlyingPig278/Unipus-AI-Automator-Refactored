@@ -11,6 +11,7 @@ from src.services.ai_service import AIService
 from src.services.cache_service import CacheService
 from src.services.diagnostic_service import DiagnosticService
 from src.services.task_progress_service import TaskProgressService
+from src.strategy_registry import filter_available_strategies
 from src.utils import logger, console
 from src.strategies.checkbox_strategy import CheckboxStrategy
 from src.strategies.single_choice import SingleChoiceStrategy
@@ -126,7 +127,12 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
     ]
     
     # 创建一个本次运行要使用的策略列表副本
-    strategies_to_run = AVAILABLE_STRATEGIES
+    strategies_to_run = filter_available_strategies(
+        AVAILABLE_STRATEGIES,
+        config.SKIP_SHORT_ANSWER_QUESTIONS,
+    )
+    if config.SKIP_SHORT_ANSWER_QUESTIONS:
+        logger.info("已启用跳过简答题配置：文本简答题和语音简答题不会自动作答。")
 
     # 快速缓存模式的核心逻辑
     if config.FAST_CACHE_MODE:
@@ -141,7 +147,7 @@ async def run_strategy_on_current_page(browser_service: DriverService, ai_servic
 
         # 过滤策略，只保留白名单中的可缓存策略
         logger.info("快速缓存模式：已启动，仅运行客观题策略以生成缓存。")
-        strategies_to_run = [s for s in AVAILABLE_STRATEGIES if s in cacheable_strategies]
+        strategies_to_run = [s for s in strategies_to_run if s in cacheable_strategies]
 
     try:
         base_breadcrumb_parts = await browser_service.get_breadcrumb_parts()

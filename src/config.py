@@ -44,6 +44,7 @@ DEEPSEEK_CHAT_MODEL = "deepseek-chat"
 PROCESS_ONLY_INCOMPLETE_TASKS = os.getenv("PROCESS_ONLY_INCOMPLETE_TASKS", "True").lower() == 'true' # 如果为True，程序将只处理“必修”且“未完成”的任务；如果为False，将处理所有“必修”任务
 AUTO_MODE_NO_CONFIRM = os.getenv("AUTO_MODE_NO_CONFIRM", "True").lower() == 'true' # 如果为True，在全自动模式下，程序将不会等待用户确认，自动发送Prompt并提交答案
 FORCE_AI = os.getenv("FORCE_AI", "False").lower() == 'true'  # 如果为True，即使有缓存，也强制使用AI重新回答
+SKIP_SHORT_ANSWER_QUESTIONS = _env_bool("SKIP_SHORT_ANSWER_QUESTIONS", False)  # 如果为True，将跳过文本简答题和语音简答题
 
 # --- 运行时状态变量 (由程序动态修改，无需用户配置) ---
 IS_AUTO_MODE = False # 标记当前是否处于全自动模式
