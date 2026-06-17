@@ -2,6 +2,8 @@
 from dotenv import load_dotenv
 import os
 
+from src.env_utils import reset_env_flag_if_true
+
 # Load environment variables from .env file
 load_dotenv()
 
@@ -12,6 +14,10 @@ def _env_int(name: str, default: int) -> int:
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    return os.getenv(name, str(default)).lower() == 'true'
 
 # --- Credentials and API Keys ---
 USERNAME = os.getenv("U_USERNAME")
@@ -61,7 +67,8 @@ BROWSER_FALLBACK_CHANNELS = [
 ]
 
 # --- Resume / task queue cache ---
-REFRESH_TASK_QUEUE = os.getenv("REFRESH_TASK_QUEUE", "False").lower() == 'true'
+REFRESH_TASK_QUEUE = _env_bool("REFRESH_TASK_QUEUE", False)
+REFRESH_TASK_QUEUE_AUTO_RESET = reset_env_flag_if_true(".env", "REFRESH_TASK_QUEUE") if REFRESH_TASK_QUEUE else False
 TASK_QUEUE_CACHE_FILE = os.getenv("TASK_QUEUE_CACHE_FILE", ".runtime/task_queues.json")
 
 # --- Study time keepalive ---
